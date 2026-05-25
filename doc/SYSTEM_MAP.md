@@ -1,7 +1,7 @@
-# SYSTEM_MAP.md — Complete Architecture Reference
+# SYSTEM_MAP.md — Architecture Reference
 
 ## Document Purpose
-This is the master reference for the VyzorixAudioRouter system. It maps every component's role, lifecycle, dependencies, data flows, and failure boundaries. Use this document to understand how the daemon operates from APK install to steady-state, and how it survives crashes, soft reboots, and system interruptions.
+The reference for the VyzorixAudioRouter system. It maps every component's role, lifecycle, dependencies, data flows, and failure boundaries. Use this document to understand how the daemon operates from APK install to steady-state, and how it survives crashes, soft reboots, and system interruptions.
 
 ---
 
@@ -1091,4 +1091,4 @@ Phase 4: Cleanup (T+6s to T+7s)
 
 ---
 
-This document serves as the complete architectural reference for VyzorixAudioRouter. All subsequent implementation should cross-check against this map to ensure component consistency, proper lifecycle ordering, and correct failure handling.
+This document serves as the architectural reference for VyzorixAudioRouter. All subsequent implementation should cross-check against this map to ensure component consistency, proper lifecycle ordering, and correct failure handling.
