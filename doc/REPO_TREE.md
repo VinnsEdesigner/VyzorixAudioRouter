@@ -1,4 +1,4 @@
-# VyzorixAudioRouter — Final Production Repository Tree
+# VyzorixAudioRouter —  Repository Tree
 
 ```
 VyzorixAudioRouter/
@@ -642,49 +642,3 @@ VyzorixAudioRouter/
 ```
 
 ---
-
-## New Components Summary
-
-### Bootstrap Corrections (6 files)
-- `LauncherIconHider.kt` — Disables launcher activity after Accessibility grant
-- `AppInfoConfig.kt` — Hides "Open" button in Settings > Apps
-- `PermissionAutoGranter.kt` — Auto-requests all runtime permissions at init
-- `BootStateRestorer.kt` — Restores daemon state after reboot (no fresh bootstrap)
-- `AccessibilityRecoveryHandler.kt` — Handles Accessibility stripped on reboot
-- `OverlayShortcutController.kt` — Manages system overlay toggle button
-
-### Cloud Update System (7 files + 2 shared)
-- `services/updates/UpdateChecker.kt` — Polls server for version info
-- `services/updates/UpdateDownloader.kt` — Downloads APK via foreground service
-- `services/updates/UpdateInstaller.kt` — Triggers system install intent
-- `services/updates/UpdateConfig.kt` — Server URLs, endpoints, version rules
-- `services/updates/UpdateStateMonitor.kt` — Monitors WiFi/cellular connectivity
-- `services/updates/UpdateStateStore.kt` — Persists update state across reboots
-- `services/updates/UpdateNotificationHandler.kt` — Shows update progress in notification bar
-- `common/utils/UpdateDownloadClient.kt` — Shared HTTP download utility with resume/checksum
-- `common/constants/UpdateApiConstants.kt` — Server base URLs, API endpoints, check intervals
-- `common/model/UpdateInfo.kt` — Server version info, release notes, download URL
-- `common/enums/UpdateState.kt` — NOT_CHECKED, AVAILABLE, DOWNLOADING, etc.
-- `common/extensions/NetworkExtensions.kt` — isConnected(), isMetered(), getActiveNetworkType()
-
-### Data Layer Additions
-- `data/converters/UpdateStateTypeConverters.kt` — Converts UpdateState enum for Room
-- `data/dao/UpdateStateDao.kt` — DAO for update download/install history
-- `data/entity/UpdateRecord.kt` — @Entity for update tracking
-- `data/repository/UpdateRepository.kt` — CRUD operations for update state
-
-### Resource Additions
-- `res/layout/overlay_shortcut.xml` — Layout for OverlayShortcutController
-- `res/layout/update_progress.xml` — Layout for UpdateNotificationHandler
-
-### Manifest Additions
-- `<uses-permission android:name="android.permission.INTERNET" />`
-- `<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />`
-- `<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />`
-- `<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />`
-- `<service android:name="UpdateDownloadService" android:foregroundServiceType="dataSync" />`
-- Network security config for Render backend URL
-- FileProvider cache-path for APK installs
-
-### CI/CD Addition
-- `.github/workflows/push_update_bin.yml` — GitHub Actions workflow to push APK to server repo's `bin/` folder after release tag
