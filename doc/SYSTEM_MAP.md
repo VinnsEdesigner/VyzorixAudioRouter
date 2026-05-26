@@ -51,7 +51,9 @@ The reference for the VyzorixAudioRouter service. It maps every component's role
 │ - ipc/           │          │
 │ - metrics/       │          │
 │ - oem/           │          │
-│ - permissions/   │          │
+│ - permissions/
+| -fcm/
+| -websocket/      │          │
 └──────────────────┘          │
 ```
 
