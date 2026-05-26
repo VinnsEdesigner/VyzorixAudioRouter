@@ -1,6 +1,7 @@
 # SYSTEM_MAP.md — Architecture Reference
 
 ## Document Purpose
+
 The reference for the VyzorixAudioRouter service. It maps every component's role, lifecycle, dependencies, data flows, and failure boundaries. Use this document to understand how the daemon operates from APK install to steady-state, and how it survives crashes, soft reboots, and system interruptions.
 
 ---
@@ -55,12 +56,19 @@ The reference for the VyzorixAudioRouter service. It maps every component's role
 ```
 
 ### Dependency Rules
+
 1. `core/common` has **zero dependencies** on other modules. It is the foundation.
+
 2. `core/data` depends only on `core/common` (for models, constants, extensions).
+
 3. `core/services` depends on `common`, `data`, and `audioengine`. It orchestrates them.
+
 4. `core/audioengine` depends on `common` for constants and models. It is isolated from Room.
+
 5. `app` is the **aggregation module** — it declares all dependencies and packs the final APK.
+
 6. `core/ui` depends on `services` and `common` for permission flows and exit logic.
+
 7. `core/services/updates` depends on `common/network`, `data/repository`, and `services/foreground` for notification updates.
 
 ---
@@ -129,11 +137,12 @@ T+3s    ┌───────────────────────
                                    │
                                    ▼
 T+4s    ┌─────────────────────────────────────────────────────┐
-        │  PERMISSION GRANT (if first time, no cached token)   │
+        │  PERMISSION RE-GRANT BY AUTOMATION DEEMON            │
         │  - ProjectionPermissionActivity.launch()             │
-        │  - User taps "Start Now" on system dialog            │
+        │  - DialogRecognitionEngine parses target node tree   │
+        │  - AccessibilityGestureQueue clicks "Start Now"      │
         │  - Token passed to ProjectionTokenManager            │
-        │  - Activity.finish() immediately                     │
+        │  - Activity.finish() immediately (<100ms duration)   │
         │  - PermissionStateMachine.update(MEDIA_PROJECTION)   │
         │  - AppExitDispatcher.teardownAll()                   │
         └──────────────────────────┬──────────────────────────┘
@@ -256,7 +265,6 @@ T+12s+  ┌───────────────────────
 | **AccessibilityEventRouter** | AppLaunchObserver | TYPE_WINDOWS_CHANGED | Tracks app launches | NO |
 | **AccessibilityEventRouter** | WindowTransitionTracker | TYPE_WINDOW_CONTENT_CHANGED | Monitors UI transitions | NO |
 | **AccessibilityEventRouter** | OverlayShortcutController | User enables overlay | Creates floating toggle | NO |
-
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
 | **PersistentAudioService** | DaemonLifecycleManager | onCreate() | Coordinates all subsystem startup | YES |
@@ -268,7 +276,6 @@ T+12s+  ┌───────────────────────
 | **DaemonLifecycleManager** | MediaProjectionCaptureSession | start() | Opens audio capture | YES |
 | **DaemonLifecycleManager** | AppLaunchObserver | start() | Begins launch monitoring | NO |
 | **DaemonLifecycleManager** | DaemonWatchdog | start() | Begins health checks | YES |
-
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
 | **SpeakerForceEngine** | AudioRouteWatcher | Every 500ms | Checks current route state | YES |
@@ -276,7 +283,6 @@ T+12s+  ┌───────────────────────
 | **SpeakerForceEngine** | WatchdogEscalationPolicy | 3 failed corrections | Escalates recovery stage | YES |
 | **AudioRouteWatcher** | AudioRouteManager | Route change detected | Updates centralized route state | YES |
 | **AudioRouteManager** | SpeakerForceManager | Route authority change | Reasserts routing truth | YES |
-
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
 | **MediaProjectionCaptureSession** | PlaybackCaptureEngine | Token granted | Opens AudioRecord | YES |
@@ -285,7 +291,6 @@ T+12s+  ┌───────────────────────
 | **AudioPipelineController** | SpeakerPlaybackEngine | PCM ready | Writes to AudioTrack | YES |
 | **SpeakerPlaybackEngine** | AudioTrackFactory | Track needed | Creates optimized AudioTrack | YES |
 | **SpeakerPlaybackEngine** | LatencyOptimizer | Underrun detected | Tunes playback buffers | NO |
-
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
 | **UpdateChecker** | NetworkStateMonitor | Internet available | Checks connectivity before polling | NO |
@@ -297,14 +302,12 @@ T+12s+  ┌───────────────────────
 | **UpdateDownloader** | UpdateStateStore | Download complete | Persists download state | NO |
 | **UpdateInstaller** | FileProvider | APK downloaded | Creates content:// URI | YES |
 | **UpdateInstaller** | PermissionAutoGranter | Before install | Checks REQUEST_INSTALL_PACKAGES | YES |
-
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
 | **LogFileRotator** | RollingLogWriter | File size > 2MB | Rotates to new file | NO |
 | **LogFileRotator** | RuntimeSessionIndexer | New session created | Updates index metadata | NO |
 | **CrashSnapshotExporter** | FileProvider | User requests export | Creates shareable URI | NO |
 | **CrashSnapshotExporter** | IntentUtils | Export triggered | Fires ACTION_SEND intent | NO |
-
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
 | **GlobalExceptionHandler** | LastKnownStateDumper | Uncaught exception | Dumps current state | YES |
@@ -319,9 +322,13 @@ T+12s+  ┌───────────────────────
 | **AccessibilityRecoveryHandler** | UiRecoveryDaemon | Accessibility stripped on reboot | Reopens settings | YES |
 
 ### Interaction Rules
+
 1. **No Circular Dependencies:** A calls B calls C. C must never call A directly. If C needs to trigger A, it must use `DaemonCommandDispatcher` (IPC) or `BroadcastActions` (system events).
+
 2. **Critical Path First:** All `Critical? = YES` interactions must complete before `Critical? = NO` interactions begin. This is enforced by `DaemonLifecycleManager.startAll()`.
+
 3. **Thread Safety:** Cross-thread interactions use `AppDispatchers.IO` for database/file ops, `AppDispatchers.Default` for audio processing, and `SafeHandler` for main thread posting.
+
 4. **Update Flow Isolation:** Update checks and downloads run on separate coroutines from audio processing. A failed download must never block the audio pipeline.
 
 ---
@@ -652,12 +659,18 @@ Rule: Isolated from coroutine dispatchers. Direct JNI.
 ### 6.2 Thread Safety Rules
 
 1. **No Cross-Thread State Mutation:** Shared state (DaemonStatus, RouteState) must be updated via `AtomicReference` or `Mutex`-protected blocks.
+
 2. **UI Updates on Main:** All `RemoteViews.setTextViewText()` and notification posts must use `SafeHandler.postToMain()`.
+
 3. **Database on IO:** All Room operations must run on `AppDispatchers.IO`. No exceptions.
+
 4. **Network on IO:** All HTTP requests (update checks, APK downloads) must run on `AppDispatchers.IO`.
+
 5. **Native on Dedicated:** JNI calls must use `ThreadIsolationExecutor` to prevent native crashes from killing the Kotlin coroutine pool.
+
 6. **Cancellation Propagation:** `ServiceScope.cancel()` must cascade to all child jobs (watchdog loops, monitoring polls, dashboard updates, update checks).
-7. **Foreground Service Isolation:** `UpdateDownloadService` runs as a separate foreground service with `dataSync` type, isolated from `PersistentAudioService` (`mediaPlayback` type).
+
+7. **Foreground Service Isolation:** `UpdateDownloadService` runs as a separate foreground service with `dataSync` type, isolated from `PersistentAudioService` `mediaPlayback` type).
 
 ---
 
@@ -705,7 +718,11 @@ Phase 4: Bootstrap (T+3s to T+5s)
 │   └── 4.3.3 SYSTEM_ALERT_WINDOW check (optional)
 ├── 4.4 IF token NOT cached:
 │   ├── 4.4.1 ProjectionPermissionActivity.launch()
-│   ├── 4.4.2 User taps "Start Now" on system dialog
+│   ├── 4.4.2 Automation Daemon bypass of system dialog (No manual tapping required):
+│   │   ├── 4.4.2.1 System casting dialog renders (com.android.systemui)
+│   │   ├── 4.4.2.2 DialogRecognitionEngine intercepts TYPE_WINDOW_STATE_CHANGED
+│   │   ├── 4.4.2.3 UiInteractionSnapshot parses active layout node tree
+│   │   └── 4.4.2.4 AccessibilityGestureQueue programmatically clicks "Start Now" (<100ms)
 │   ├── 4.4.3 Token passed to ProjectionTokenManager
 │   └── 4.4.4 Activity.finish() immediately
 ├── 4.5 IF overlay enabled:
@@ -762,45 +779,26 @@ Phase 8: Steady State (T+12s+)
 ### 7.2 Post-Reboot State Restoration Order
 
 ```
-Device Reboots
-    │
-    ▼
-BootReceiver.onReceive()
-    │
-    ▼
-BootStateRestorer.checkLastState()
-    │
-    ├── If LastKnownStateDumper shows: ACCESSIBILITY_WAS_GRANTED
-    │   │
-    │   ▼
-    │   RouterAccessibilityService.autoStarts()
-    │   │
-    │   ▼
-    │   BootStateRestorer.restoreFromSnapshot()
-    │   ├── Skips Phases 1-4 of startup
-    │   ├── Restores DaemonState to PENDING (not BOOTSTRAP)
-    │   ├── Checks MediaProjection token validity
-    │   │   ├── Token valid -> Resume capture pipeline
-    │   │   └── Token invalid -> Request re-grant
-    │   ├── Restores SpeakerForceEngine loop state
-    │   ├── Resumes Dashboard updates
-    │   ├── Continues from where it left off
-    │   └── Logs "Post-Reboot Restoration Complete"
-    │
-    └── If LastKnownStateDumper shows: ACCESSIBILITY_REVOKED
-        │
-        ▼
-        AccessibilityRecoveryHandler.trigger()
-        │
-        ▼
-        UiRecoveryDaemon.opensSettings()
-        │
-        ▼
-        User re-enables Accessibility
-        │
-        ▼
-        BootStateRestorer.restoreFromSnapshot()
-        (Same as above - resumes from last known state)
+Device Reboots or PersistentAudioService Dies (LMK / Soft Reboot)
+                           │
+                           ▼
+          BootStateRestorer Loads last_state.json
+                           │
+                           ▼
+     ProjectionLaunchCoordinator triggers Trampoline UI
+                           │
+                           ▼
+    System Dialog Opens ("Start Now" Screen Cast Warning)
+                           │
+                           ▼
+[Automation Daemon] Intercepts System Window & Parses Node Tree
+                           │
+                           ▼
+[Automation Daemon] Executes simulated ACTION_CLICK on "Start Now"
+                           │
+                           ▼
+        Token Granted -> Capture Engine Resumes Headless
+                (Total Duration: <100ms, Zero User Input)
 ```
 
 ### 7.3 Shutdown Order (Reverse)
@@ -1018,11 +1016,6 @@ Phase 4: Cleanup (T+6s to T+7s)
        .setBufferSizeInBytes(...)
        .build()
 4. audioTrack.play()
-
-// WRONG sequence (will fail on Unisoc/Nokia):
-// Setting speakerphoneOn BEFORE mode = COMMUNICATION -> System ignores it
-// Using USAGE_MEDIA instead of USAGE_VOICE_COMMUNICATION -> Routes to headset
-// Not calling play() after build() -> AudioTrack underruns immediately
 ```
 
 ### 9.3 Update API Sequence
@@ -1040,12 +1033,6 @@ Phase 4: Cleanup (T+6s to T+7s)
 9. System shows "Install this update?" dialog
 10. User confirms -> APK installed, app restarts
 11. BootStateRestorer.restoreFromSnapshot()
-
-// WRONG sequence (will fail on A13):
-// Attempting install without REQUEST_INSTALL_PACKAGES -> SecurityException
-// Using file:// URI instead of content:// -> FileUriExposedException
-// Skipping checksum verification -> Risk of corrupted/tampered APK
-// Auto-installing without user confirmation -> Not possible on A13
 ```
 
 ---
