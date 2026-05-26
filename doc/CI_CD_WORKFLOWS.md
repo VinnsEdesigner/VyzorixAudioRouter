@@ -188,9 +188,9 @@ jobs:
 
 ## `push_update_bin.yml` (Push to Server Repo)
 
-This is the critical workflow that connects the main codebase to the server repo. It runs after a release tag is pushed, builds the signed APK, generates version.json, and pushes both to the server repository.
+This is the critical workflow that connects the main codebase to the server repo. It runs after a release tag is pushed, downloads the signed and downloaded apk from artifacts , generates version.json, and pushes both to the server repository.
 
-```yaml
+```yaml ( the file needs to be corrected though, tye builds instead of downloading , it was just because of earlier structure but after, i felt it's just backward 😅)
 name: Push Update to Server Repo
 
 on:
@@ -423,7 +423,7 @@ release.yml triggers
     ▼
 push_update_bin.yml triggers (workflow_run: completed)
     │
-    ├── Re-builds APK (or downloads from release artifact)
+    ├── downloads from release artifact
     ├── Computes SHA-256 checksum
     ├── Generates version.json
     ├── Checks out server repo
