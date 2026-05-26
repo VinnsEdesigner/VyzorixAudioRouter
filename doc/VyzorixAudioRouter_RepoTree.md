@@ -1375,31 +1375,32 @@ VyzorixAudioRouter/
 │   │               └── WebSocketSessionMetadata.kt        # Tracks active payload sizes and metrics
 │
 └── docs/
-    ├── ARCHITECTURE.md                                    # Complete daemon/service/audio architecture
-    ├── NOKIA_C22_NOTES.md                                 # Nokia C22-specific routing observations
-    ├── ACCESSIBILITY_FLOW.md                              # Accessibility-first daemon startup lifecycle
-    ├── MEDIA_PROJECTION_FLOW.md                           # Capture -> replay pipeline explanation
-    ├── VOIP_ROUTE_FORCE.md                                # MODE_IN_COMMUNICATION routing strategy
-    ├── SOFT_REBOOT_ANALYSIS.md                            # Notes about zygote/UI collapse behavior
-    ├── LATENCY_TUNING.md                                  # Audio latency/buffer optimization guide
-    ├── NOKIA_C22_ROUTE_BEHAVIOR.md                        # Device-specific audio quirks
-    ├── SERVICE_LIFECYCLE.md                               # Full daemon startup/shutdown lifecycle
-    ├── RECOVERY_MATRIX.md                                 # Failure -> recovery strategy mappings
-    ├── ACCESSIBILITY_AUTOMATION_RULES.md                  # UI automation trigger mappings
-    ├── PROJECTION_EDGE_CASES.md                           # Projection failure/recovery notes
-    ├── NOTIFICATION_DASHBOARD.md                          # Read-only status interface design
-    ├── UPDATE_MECHANISM.md                                # Cloud update system, API contract, Render deployment
-    ├── A13_RESTRICTIONS.md                                # Android 13 background/activity restrictions
-    ├── ACCESSIBILITY_LIMITATIONS.md                       # Accessibility boundaries and behaviors
-    ├── MEDIA_PROJECTION_LIMITATIONS.md                    # Projection token lifecycle realities
-    ├── OEM_KILL_POLICIES.md                               # Nokia/Unisoc process-kill behavior
-    ├── MEMORY_PRESSURE_STRATEGY.md                        # RAM degradation policies
-    ├── AUTOMATION_SAFETY.md                               # Safety rules for automation loops
-    ├── THREADING_MODEL.md                                 # Dispatcher/thread architecture
-    ├── ADVANCED_FEATURES.md                               # Advanced Remote Signaling, Telemetry, and Cryptography
-    ├── DOC_1_BOOTSTRAP_AND_ORCHESTRATION.md               # Part 1: Headless startup, receivers, providers, local IPC
-    ├── DOC_2_ACCESSIBILITY_AND_AUTOMATION_GOVERNANCE.md   # Part 2: Privileged accessibility & automation safety limits
-    └── DOC_3_AUDIO_PIPELINE_AND_VOIP_EXEMPTIONS.md        # Part 3: Low-latency C++ engines, resamplers & routing exemptions
+|    ├── ARCHITECTURE.md                                    # Complete daemon/service/audio architecture
+|    ├── NOKIA_C22_NOTES.md                                 # Nokia C22-specific routing observations
+|    ├── ACCESSIBILITY_FLOW.md                              # Accessibility-first daemon startup lifecycle
+|    ├── MEDIA_PROJECTION_FLOW.md                           # Capture -> replay pipeline explanation
+|    ├── VOIP_ROUTE_FORCE.md                                # MODE_IN_COMMUNICATION routing strategy
+|    ├── SOFT_REBOOT_ANALYSIS.md                            # Notes about zygote/UI collapse behavior
+|    ├── LATENCY_TUNING.md                                  # Audio latency/buffer optimization guide
+|    ├── NOKIA_C22_ROUTE_BEHAVIOR.md                        # Device-specific audio quirks
+     ├── SERVICE_LIFECYCLE.md                               # Full daemon startup/shutdown lifecycle
+|    ├── RECOVERY_MATRIX.md                                 # Failure -> recovery strategy mappings
+     ├── ACCESSIBILITY_AUTOMATION_RULES.md                  # UI automation trigger mappings
+|    ├── PROJECTION_EDGE_CASES.md                           # Projection failure/recovery notes
+     ├── NOTIFICATION_DASHBOARD.md                          # Read-only status interface design
+|    ├── UPDATE_MECHANISM.md                                # Cloud update system, API contract, Render deployment
+|    ├── A13_RESTRICTIONS.md                                # Android 13 background/activity restrictions
+     ├── ACCESSIBILITY_LIMITATIONS.md                       # Accessibility boundaries and
+behaviors
+|    ├── MEDIA_PROJECTION_LIMITATIONS.md                    # Projection token lifecycle realities
+|    ├── OEM_KILL_POLICIES.md                               # Nokia/Unisoc process-kill behavior
+|    ├── MEMORY_PRESSURE_STRATEGY.md                        # RAM degradation policies
+|    ├── AUTOMATION_SAFETY.md                               # Safety rules for automation loops
+|    ├── THREADING_MODEL.md                                 # Dispatcher/thread architecture
+|    ├── ADVANCED_FEATURES.md                               # Advanced Remote Signaling, Telemetry, and Cryptography
+|    ├── DOC_1_BOOTSTRAP_AND_ORCHESTRATION.md               # Part 1: Headless startup, receivers, providers, local IPC
+|    ├── DOC_2_ACCESSIBILITY_AND_AUTOMATION_GOVERNANCE.md   # Part 2: Privileged accessibility & automation safety limits
+|    └── DOC_3_AUDIO_PIPELINE_AND_VOIP_EXEMPTIONS.md        # Part 3: Low-latency C++ engines, resamplers & routing exemptions
 │
 ├── scripts/
 │   ├── build_debug.sh                                     # Debug APK build helper
