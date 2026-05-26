@@ -145,15 +145,15 @@ VyzorixAudioRouter/
 │       │   └── update_progress.xml                        # Layout for UpdateNotificationHandler (download progress bar)
 
 │       └── raw/
-
-│           ├── startup_chime.wav                          # Optional debug startup cue
-
-│           └── silent_anchor.wav                          # Silent VoIP anchor sample
-
-│
-
+        |
+│       |    ├── startup_chime.wav                          # Optional debug startup cue
+        |
+│       |    └── silent_anchor.wav                          # Silent VoIP anchor sample
+        |
+│.      |
+        |
 │       └── kotlin/com/vyzorix/audiorouter/
-
+            |
 │           ├── VyzorixApplication.kt                      # Application entry point
 
 │           │                                              # - Registers GlobalExceptionHandler
