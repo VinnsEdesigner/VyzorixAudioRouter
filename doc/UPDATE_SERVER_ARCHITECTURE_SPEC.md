@@ -19,7 +19,7 @@ The server is engineered as a lightweight, static-binary Go web service. It coor
   │                                  VYZORIX CONTROL PLATFORM                              │
   │                                                                                        │
   │  ┌─────────────────────────┐     WebSocket Link     ┌───────────────────────────────┐  │
-  │  │  React Web Dashboard    │◄──────────────────────►│     WebSocket Broker (Hub)     │  │
+  │  │  Web Dashboard    │◄──────────────────────►│     WebSocket Broker (Hub)     │  │
   │  │                         │                        │  - gorilla/websocket          │  │
   │  └──────────┬──────────────┘                        │  - Melody concurrent tunnels  │  │
   │             │ HTTP POST                             └──────────────▲────────────────┘  │
