@@ -92,7 +92,7 @@ vyzorix-update-server/
         │   ├── useWebSocket.ts            # Implements automatic reconnection, ping cycles, and message routing
         │   ├── useTelemetry.ts            # Pools and organizes live chart data arrays
         │   ├── useDevices.ts              # Connects API endpoints to retrieve fleet states
-        │   └── useAuth.ts                 # Direct handler for logins and logout routines
+        │   └── useAuth.ts  👈 (ignore this for now)
         │
         ├── services/                      # API service clients
         │   ├── api.ts                     # Custom Axios client with base interceptors for backend REST endpoints
@@ -104,7 +104,7 @@ vyzorix-update-server/
         │   └── cn.ts                      # Tailwind class-name merging helper
         │
         ├── pages/                         # Main page view components
-        │   ├── LoginPage.tsx              # Secure admin login portal
+        │   ├── LoginPage.tsx    👈 (ignore thi)
         │   ├── DashboardPage.tsx          # Master dashboard (displays summary metrics, quick controls, active counts)
         │   ├── DevicesPage.tsx            # Device Fleet Grid (allows searching, filtering, and paging through devices)
         │   ├── DiagnosticsPage.tsx        # Live C2 Console (terminal log stream, live telemetry graphs)
@@ -123,7 +123,7 @@ vyzorix-update-server/
             │   ├── Badge.tsx              # Monochrome badges representing states (Green/OK, Yellow/Warn, Red/XX)
             │   ├── Modal.tsx              # Smooth animating overlay dialog boundaries
             │   ├── Table.tsx              # Responsive tabular fleet lists
-            │   ├── Spinner.tsx            # Loading animation transitions
+            │   ├── Spinner.tsx            # Loading animation transitions across the tabs and etc.
             │   └── Tooltip.tsx            # Accessible info overlays on hover
             │
             ├── dashboard/
