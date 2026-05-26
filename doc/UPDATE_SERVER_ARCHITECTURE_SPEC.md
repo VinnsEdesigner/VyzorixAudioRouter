@@ -1,7 +1,7 @@
-# UPDATE_SERVER_ARCHITECTURE_SPEC.md — Go C2 & Update Server Architecture Specification
+# UPDATE_SERVER_ARCHITECTURE_SPEC.md — C2 & Update Server Architecture Specification
 
 ## Document Purpose
-This document serves as the complete, production-grade system and file specification for the **Vyzorix Command & Control (C2) and Update Server** (`vyzorix-update-server`). 
+This documents the system and file specification for the **Vyzorix Command & Control (C2) and Update Server** (`vyzorix-update-server`). 
 
 It details:
 1.  The general operational mechanics of the server.
