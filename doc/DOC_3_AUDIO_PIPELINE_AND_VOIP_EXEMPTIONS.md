@@ -39,7 +39,7 @@ The following mapping outlines the complete sub-millisecond data flow from the p
    AudioTrack (Android System Output)
          │
          ▼ (Forced by SpeakerForceEngine running in 500ms loops)
-   [PHYSICAL SPEAKERPHONE] (Bypasses headset sensor stuck in connected state)
+   [PHYSICAL SPEAKERPHONE] (Bypasses headset sensor stuck in connected state)---- 500ms loop: This is running every 500ms indefinitely. On my 2GB device, this + capture + WebSocket heartbeat + dashboard updates = constant CPU churn. AdaptiveSamplingController should dynamically push this to 2000ms+ when the route is stable, only tightening when drift is detected. 
 ```
 
 ---
