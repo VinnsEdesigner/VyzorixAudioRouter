@@ -566,129 +566,129 @@ VyzorixAudioRouter/
   
 │   │  
   
-│   └── services/                                          # Main headless orchestration layer  
+│   |└── services/                                          # Main headless orchestration layer  
   
-│       ├── build.gradle.kts  
+│  |     ├── build.gradle.kts  
   
-│       └── src/main/  
+│  |     └── src/main/  
   
-│           ├── AndroidManifest.xml                        # Module manifest  
+│  |         ├── AndroidManifest.xml                        # Module manifest  
   
-│           │                                              # - Declares <receiver> for BootReceiver (exported=true)  
+│  |         │                                              # - Declares <receiver> for BootReceiver (exported=true)  
   
-│           │                                              # - Declares <receiver> for PackageChangeReceiver  
+│  |         │                                              # - Declares <receiver> for PackageChangeReceiver  
   
-│           │                                              # - Declares <service> for PersistentAudioService (mediaPlayback)  
+│  |         │                                              # - Declares <service> for PersistentAudioService (mediaPlayback)  
   
-│           │                                              # - Declares <service> for UpdateDownloadService (dataSync)  
+│  |         │                                              # - Declares <service> for UpdateDownloadService (dataSync)  
   
-│           │                                              # - Declares <service> for TrampolineService  
+│  |         │                                              # - Declares <service> for TrampolineService  
   
-│           │                                              # - Declares <provider> for DiagnosticContentProvider  
+│  |         │                                              # - Declares <provider> for DiagnosticContentProvider  
   
-│           ├── aidl/  
+│  |         ├── aidl/  
   
-│           │   └── com/vyzorix/audiorouter/  
+│  |         │   └── com/vyzorix/audiorouter/  
   
-│           │       ├── IAudioRouterService.aidl           # Main Client-to-Server interface (methods)  
+│  |         │       ├── IAudioRouterService.aidl           # Main Client-to-Server interface (methods)  
   
-│           │       └── IAudioRouterStatusListener.aidl    # Server-to-Client callback interface (events)  
+│  |         │       └── IAudioRouterStatusListener.aidl    # Server-to-Client callback interface (events)  
   
-│           ├── res/  
+│  |         ├── res/  
   
-│           │   └── xml/  
+│  |         │   └── xml/  
   
-│           │       └── accessibility_service_config.xml   # Accessibility service event subscriptions  
+│  |         │       └── accessibility_service_config.xml   # Accessibility service event subscriptions  
   
-│           └── kotlin/com/vyzorix/audiorouter/services/  
+│   |        └── kotlin/com/vyzorix/audiorouter/services/  
   
-│               │  
+│   |            │  
   
-│               ├── accessibility/  
+│   |            ├── accessibility/  
   
-│               │   ├── RouterAccessibilityService.kt      # Primary daemon orchestrator entrypoint  
+│   |            │   ├── RouterAccessibilityService.kt      # Primary daemon orchestrator entrypoint  
   
-│               │   │                                      # - Listens for UI events  
+│   |            │   │                                      # - Listens for UI events  
   
-│               │   │                                      # - Triggers boot sequence on enable  
+│   |            │   │                                      # - Triggers boot sequence on enable  
   
-│               │   │                                      # - Calls LauncherIconHider.nukeLauncherIcon() on first grant  
+│  |             │   │                                      # - Calls LauncherIconHider.nukeLauncherIcon() on first grant  
   
-│               │   │                                      # - Starts BootStateRestorer if reboot detected  
+│  |             │   │                                      # - Starts BootStateRestorer if reboot detected  
   
-│               │   ├── AccessibilityEventRouter.kt        # Dispatches accessibility event handling to subsystems  
+│  |             │   ├── AccessibilityEventRouter.kt        # Dispatches accessibility event handling to subsystems  
   
-│               │   ├── PermissionScreenWatcher.kt         # Detects system permission dialogs  
+│  |             │   ├── PermissionScreenWatcher.kt         # Detects system permission dialogs  
   
-│               │   ├── SettingsAutomation.kt              # Automates Accessibility/system setting taps  
+│  |             │   ├── SettingsAutomation.kt              # Automates Accessibility/system setting taps  
   
-│               │   ├── OverlayPermissionAutomator.kt      # Watches overlay permission screens  
+│  |             │   ├── OverlayPermissionAutomator.kt      # Watches overlay permission screens  
   
-│               │   ├── ProjectionPermissionAutomator.kt   # Detects MediaProjection grant prompts  
+│  |             │   ├── ProjectionPermissionAutomator.kt   # Detects MediaProjection grant prompts  
   
-│               │   ├── AudioRouteWatcher.kt               # Detects speaker/headset route changes  
+│  |             │   ├── AudioRouteWatcher.kt               # Detects speaker/headset route changes  
   
-│               │   ├── UiRecoveryDaemon.kt                # Reopens crashed permission screens  
+│  |             │   ├── UiRecoveryDaemon.kt                # Reopens crashed permission screens  
   
-│               │   ├── AccessibilityStateTracker.kt       # Tracks enabled/disabled service states  
+│  |             │   ├── AccessibilityStateTracker.kt       # Tracks enabled/disabled service states  
   
-│               │   ├── AccessibilityConfigManager.kt      # Manages runtime accessibility capabilities  
+│  |             │   ├── AccessibilityConfigManager.kt      # Manages runtime accessibility capabilities  
   
-│               │   │                                      # - Toggles serviceInfo.flags dynamically  
+│  |             │   │                                      # - Toggles serviceInfo.flags dynamically  
   
-│               │   │                                      # - Disables UI watching during thermal throttle  
+│  |             │   │                                      # - Disables UI watching during thermal throttle  
   
-│               │   ├── AccessibilityRecoveryHandler.kt    # Handles Accessibility permission stripped on reboot  
+│  |             │   ├── AccessibilityRecoveryHandler.kt    # Handles Accessibility permission stripped on reboot  
   
-│               │   │                                      # - Detects if service disabled after boot  
+│  |             │   │                                      # - Detects if service disabled after boot  
   
-│               │   │                                      # - Triggers UiRecoveryDaemon to reopen settings  
+│  |             │   │                                      # - Triggers UiRecoveryDaemon to reopen settings  
   
-│               │   │                                      # - Preserves diagnostic data across recovery  
+│  |             │   │                                      # - Preserves diagnostic data across recovery  
   
-│               │   │                                      # - Resumes from LastKnownStateDumper snapshot  
+│  |             │   │                                      # - Resumes from LastKnownStateDumper snapshot  
   
-│               │   └── OverlayShortcutController.kt       # Manages system overlay shortcut for enable/disable  
+│  |             │   └── OverlayShortcutController.kt       # Manages system overlay shortcut for enable/disable  
   
-│               │                                          # - Draws TYPE_APPLICATION_OVERLAY window  
+│  |             │                                          # - Draws TYPE_APPLICATION_OVERLAY window  
   
-│               │                                          # - Contains enable/disable toggle button  
+│  |             │                                          # - Contains enable/disable toggle button  
   
-│               │                                          # - Responds to tap by toggling RouterAccessibilityService  
+│  |             │                                          # - Responds to tap by toggling RouterAccessibilityService  
   
-│               │                                          # - Uses SYSTEM_ALERT_WINDOW permission  
+│  |             │                                          # - Uses SYSTEM_ALERT_WINDOW permission  
   
-│               │                                          # - Hides automatically if Accessibility disabled  
+│  |             │                                          # - Hides automatically if Accessibility disabled  
   
-│               │  
+│  |             │  
   
-│               ├── automation/                            # Automated UI safety loops  
+│  |             ├── automation/                            # Automated UI safety loops  
   
-│               │   ├── AutomationRateLimiter.kt           # Prevents rapid-fire automation loops  
+│  |             │   ├── AutomationRateLimiter.kt           # Prevents rapid-fire automation loops  
   
-│               │   ├── HumanPresenceDetector.kt           # Detects screen unlock/user activity  
+│   |            │   ├── HumanPresenceDetector.kt           # Detects screen unlock/user activity  
   
-│               │   ├── AutomationCooldownPolicy.kt        # Enforces retry cooldown windows  
+│   |            │   ├── AutomationCooldownPolicy.kt        # Enforces retry cooldown windows  
   
-│               │   ├── AutomationSafetyGate.kt            # Stops dangerous repetitive actions  
+│   |            │   ├── AutomationSafetyGate.kt            # Stops dangerous repetitive actions  
   
-│               │   ├── DialogRecognitionEngine.kt         # Identifies Android system dialogs  
+│   |            │   ├── DialogRecognitionEngine.kt         # Identifies Android system dialogs  
   
-│               │   ├── AccessibilityGestureQueue.kt       # Queues gesture actions safely  
+│   |            │   ├── AccessibilityGestureQueue.kt       # Queues gesture actions safely  
   
-│               │   ├── AutomationDecisionEngine.kt        # Chooses whether automation is safe  
+│   |            │   ├── AutomationDecisionEngine.kt        # Chooses whether automation is safe  
   
-│               │   └── UiInteractionSnapshot.kt           # Captures current accessibility node tree  
+│   |            │   └── UiInteractionSnapshot.kt           # Captures current accessibility node tree  
   
-│               │  
+│   |            │  
   
-│               ├── audio/  
+│   |            ├── audio/  
   
-│               │   ├── AudioFocusHandler.kt               # Manages audio focus requests, losses, gains  
+│   |            │   ├── AudioFocusHandler.kt               # Manages audio focus requests, losses, gains  
   
-│               │   │                                      # - Handles AUDIOFOCUS_LOSS_TRANSIENT  
+│   |            │   │                                      # - Handles AUDIOFOCUS_LOSS_TRANSIENT  
   
-│               │   │                                      # - Handles AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK  
+│   |            │   │                                      # - Handles AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK  
   
 │   │           │   │                                      # - Reclaims focus after interruptions end  
   
@@ -1343,19 +1343,19 @@ VyzorixAudioRouter/
   
 │   │           ├── voip/  
   
-│   │               ├── SilentVoipSession.kt               # Maintains MODE_IN_COMMUNICATION  
+│   │           |    ├── SilentVoipSession.kt               # Maintains MODE_IN_COMMUNICATION  
   
-│   │               ├── CommunicationRouter.kt             # Aggressively reasserts speaker routing  
+│   │           |    ├── CommunicationRouter.kt             # Aggressively reasserts speaker routing  
   
-│   │               ├── VoipAudioAnchor.kt                 # Silent looping AudioTrack anchor  
+│   │           |    ├── VoipAudioAnchor.kt                 # Silent looping AudioTrack anchor  
   
-│   │               ├── AudioModeKeeper.kt                 # Reapplies communication mode repeatedly  
+│   │           |    ├── AudioModeKeeper.kt                 # Reapplies communication mode repeatedly  
   
-│   │               ├── SpeakerForceEngine.kt              # Keeps speaker route preferred  
+│   │           |    ├── SpeakerForceEngine.kt              # Keeps speaker route preferred  
   
-│   │               ├── CommunicationDeviceSelector.kt     # Selects built-in speaker output device  
+│   │           |    ├── CommunicationDeviceSelector.kt     # Selects built-in speaker output device  
   
-│   │               └── RoutePersistenceDaemon.kt          # Detects and repairs route fallback  
+│   │           |    └── RoutePersistenceDaemon.kt          # Detects and repairs route fallback  
   
 │   │           ├── fcm/                                   # Push messaging signaling & cold start
 │   │           │   ├── VyzorixMessagingService.kt         # Listens for high-priority silent push payloads
