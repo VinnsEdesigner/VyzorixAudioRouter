@@ -2,32 +2,18 @@
 
 ## Objective
 
-This document defines the production-grade repository structure and configuration specifications for the **Vyzorix Command & Control (C2) and Update Server**. 
+This is just a simple repo structure and configuration specifications for the **Vyzorix Command & Control (C2) and Update Server**. (just few files for now but later with updates there will be progress)
 
 To handle thousands of high-frequency, bidirectional WebSocket telemetry streams within cheap, highly constrained cloud hosting environments (such as Render’s 512MB free tier), **Go (Golang)** is selected as the primary backend language. 
 
-The frontend is built as a highly modular, professional **Vite + React + TypeScript + Tailwind CSS** Single Page Application (SPA), delivering compilation-level safety, strict data typing, and real-time visualization of device fleets.
+The frontend is modular, **Vite + React + TypeScript + Tailwind CSS**  (SPA), delivering compilation-level safety, strict data typing, and real-time visualization of device fleets.
 
----
 
-# Part 1. Backend Language Selection: Why Go (Golang)?
-
-When operating a real-time C2 and telemetry server, Node.js (TypeScript) and Kotlin/Java (JVM) run into severe resource boundaries on limited infrastructure. We select **Go (Golang)** for the following engineering reasons:
-
-### 1. Minimal Memory Footprint
-* **The Reality:** A Node.js runtime requires a baseline of ~80MB–150MB of RAM, which swells under concurrent garbage collection. A JVM (Kotlin/Ktor) runtime starts at ~250MB–400MB, making it extremely prone to Out-Of-Memory (OOM) container kills on Render’s 512MB RAM containers.
-* **The Go Advantage:** A compiled Go binary starts with a memory footprint of **less than 15MB**. It can handle thousands of persistent TCP connections with under 50MB of total heap allocation.
-
-### 2. High-Frequency Concurrency (Goroutines)
-* **The Reality:** Node.js runs on a single thread. Heavy JSON processing, log decryption, or SHA-256 hashing blocks the event loop, causing WebSocket ping timeouts and disconnection storms.
-* **The Go Advantage:** Go schedules concurrent tasks using **Goroutines**—lightweight threads managed by the Go runtime that require only 2KB of memory stack space per socket. This allows us to handle high-frequency telemetry parsing and database writes concurrently without blocking the main signaling loops.
 
 ### 3. Native Low-Overhead WebSockets
-* Using Go's highly optimized `gorilla/websocket` or `melody` engines, full-duplex TCP routing is achieved with sub-millisecond processing latencies.
+* Using Go's highly optimized `gorilla/websocket` or `melody` engines, you get full-duplex TCP routing just achieved with sub-millisecond processing latencies.
 
----
-
-# Part 2. Complete Production-Grade Update Server Tree
+---- so here is the Update Server repo Tree
 
 ```text
 vyzorix-update-server/
@@ -158,6 +144,3 @@ vyzorix-update-server/
                 └── RiskScoreChart.tsx     # Interactive chart plotting SoftRebootPredictor risks
 ```
 
-This updated, exhaustive Go & React architecture blueprint ensures that **your backend consumes minimal hardware resources, supports thousands of concurrent full-duplex WebSocket connections safely, and exposes a high-density, strictly-typed fleet control dashboard**, completely protected against type-mismatch bugs during editor time and compilation. 
-
-Let me know what we should focus on next! We can update your update server documentation to match this exact Go/React spec!
