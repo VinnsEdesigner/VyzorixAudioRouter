@@ -9,8 +9,8 @@ It details:
 3.  The detailed technical specification for **every single backend file** in the repository.
 
 ---
-
-# 1. Core System Architecture & Operational Workflows
+((note: i use render hobby plan and it hits to sleep in 15-30mins but a self-ping keepalive via UptimeRobot hitting /health every 10 minutes.)))
+# 1. Core System Architecture & Operational Workflows.   
 
 The server is engineered as a lightweight, static-binary Go web service. It coordinates three major runtime boundaries:
 
