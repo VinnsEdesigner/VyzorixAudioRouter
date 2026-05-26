@@ -83,7 +83,7 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/security/
 *   **Path**: `core/common/src/main/kotlin/com/vyzorix/audiorouter/common/utils/KeystoreManager.kt`
 *   **Architectural Role**: Hardware-backed key manager. It accesses Android's `KeyStore` container using `KeyGenParameterSpec` to securely generate and store cryptographic keys inside the SoC's Trusted Execution Environment (TEE).
 *   **Core APIs**: Binds directly to `KeyStore.getInstance("AndroidKeyStore")`.
-*   **Failure Boundaries & Escape Hatches**: If the hardware Keystore is unavailable or corrupted during a system update, this class runs a local software fallback encryption scheme using randomized salt signatures.
+*   **Failure Boundaries & Escape Hatches**: If the hardware Keystore is unavailable or corrupted during a system update, this class runs a local software fallback encryption scheme using randomized salt signature --because on Unisoc SC9863A, Keystore hardware attestation is unreliable, KeystoreManager needs a robust software fallback, not just catching the exception — it should silently degrade to a software key derived from install-time UUID + salt.
 
 ### 3.2 `CryptoHelper.kt`
 *   **Path**: `core/common/src/main/kotlin/com/vyzorix/audiorouter/common/utils/CryptoHelper.kt`
