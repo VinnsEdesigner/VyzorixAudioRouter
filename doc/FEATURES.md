@@ -1,8 +1,8 @@
-# ADVANCED_FEATURES.md — Advanced Signaling, Telemetry, and Cryptographic Security
+#FEATURES.md —Signaling, Telemetry, and Cryptographic Security
 
 ## Document Purpose
 
-This document provides a comprehensive, step-by-step technical guide for configuring, deploying, and operating the advanced capabilities of the VyzorixAudioRouter ecosystem. 
+This document provides a comprehensive, step-by-step technical guide for configuring, deploying, and operating the capabilities of the VyzorixAudioRouter ecosystem. 
 
 These features enable:
 1. **Silent Remote Signaling (FCM)**: Wakes up the background process and triggers full-screen permission regrants without root on stock Android 13.
@@ -11,7 +11,7 @@ These features enable:
 
 ---
 
-# 1. Advanced Architecture Specifications
+# 1. Architecture Specifications
 
 ```text
   ┌────────────────────────────────────────────────────────────────────────────────────────┐
