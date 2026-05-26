@@ -1,4 +1,4 @@
-# UPDATE_SERVER.md — Vyzorix C2 & Update Server Spec (Go & React Production Edition)
+# UPDATE_SERVER.md — Vyzorix C2 & Update Server
 
 ## Objective
 
