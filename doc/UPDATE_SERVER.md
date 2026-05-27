@@ -112,7 +112,7 @@ vyzorix-update-server/
 │                                                          # POST /v1/command → Parse JSON → Check if target device online?
 │                                                          #   YES (device connected): hub.ActiveHub.Send() → direct WebSocket route
 │                                                          #   NO (device sleeping): services/fcm.SendSilentPush() → FCM wake signal
-│   └── websocket_handler.go                               # [NEW] HTTP-to-WebSocket upgrade handler; the entry point that performs the HTTP → WebSocket protocol upgrade via gorilla/websocket Upgrader; hub.go manages connections once upgraded but this handler is the actual Gin route handler that initiates the upgrade; without this file no WebSocket connections can be established despite hub.go existing
+│   └── websocket_handler.go                               # HTTP-to-WebSocket upgrade handler; the entry point that performs the HTTP → WebSocket protocol upgrade via gorilla/websocket Upgrader; hub.go manages connections once upgraded but this handler is the actual Gin route handler that initiates the upgrade; without this file no WebSocket connections can be established despite hub.go existing
 │
 ├── services/
 │   └── fcm/
@@ -127,7 +127,7 @@ vyzorix-update-server/
 │
 ├── middleware/
 │   ├── auth.go                                            # Request authorizer; validates Authorization headers against JWT_SECRET on private C2 endpoints and WebSocket handshakes; prevents unauthorized dashboard or device access
-│   ├── cors.go                                            # [NEW] CORS middleware for Gin; explicitly configures allowed origins for Android client (android-app://com.vyzorix.audiorouter) and React dashboard domain; required because Gin has no default CORS handling unlike the Node/Express version which had explicit cors() config; without this all cross-origin requests from both the device and dashboard are blocked
+│   ├── cors.go                                            #  CORS middleware for Gin; explicitly configures allowed origins for Android client (android-app://com.vyzorix.audiorouter) and React dashboard domain; required because Gin has no default CORS handling unlike the Node/Express version which had explicit cors() config; without this all cross-origin requests from both the device and dashboard are blocked
 │   ├── rate_limiter.go                                    # Token-bucket rate limiter on public update endpoints (/api/v1/version, /bin/*); blocks flood attempts from faulty or compromised clients
 │   └── logger.go                                          # High-performance structured JSON console logger; writes incoming request method, path, elapsed execution time, and response status
 │
@@ -148,8 +148,8 @@ vyzorix-update-server/
 │   ├── index.html                                         # Simple server landing page showing service status, version, and health endpoint link
 │   ├── style.css                                          # Minimal styling for landing page
 │   ├── health.json                                        # Static health check fallback file
-│   ├── favicon.ico                                        # [NEW] Browser favicon; Vite will warn on build without this; also referenced by index.html
-│   └── manifest.json                                      # [NEW] Web app manifest; required by Vite build pipeline to suppress missing-manifest warnings; declares app name, icons, theme color for the control dashboard PWA surface
+│   ├── favicon.ico                                        # [Browser favicon; Vite will warn on build without this; also referenced by index.html
+│   └── manifest.json                                      #  Web app manifest; required by Vite build pipeline to suppress missing-manifest warnings; declares app name, icons, theme color for the control dashboard PWA surface
 │
 ├── scripts/
 │   ├── generate_version.sh                                # Reads APK binary; computes SHA-256; auto-generates api/v1/version.json with all required fields
@@ -241,14 +241,14 @@ vyzorix-update-server/
             │   ├── DeviceLogTerminal.tsx                  # Scrollable console printing live log stream from selected device via WebSocket
             │   ├── RouteStateCard.tsx                     # Displays current routing state: speaker forced/headset lock/drifting; last correction timestamp
             │   ├── ThermalMetricsCard.tsx                 # Displays SoC temperature sensor readings, thermal throttle status, current sample rate reduction
-            │   └── UpdateStateCard.tsx                    # [NEW] Displays current OTA update state per device (NOT_CHECKED / AVAILABLE / DOWNLOADING / DOWNLOADED / INSTALLING / SUCCESS / FAILED); shows last check timestamp, available version if any, and download progress; feeds from TelemetryFrame update fields; referenced by UpdateState enum in Android client
+            │   └── UpdateStateCard.tsx                    #  Displays current OTA update state per device (NOT_CHECKED / AVAILABLE / DOWNLOADING / DOWNLOADED / INSTALLING / SUCCESS / FAILED); shows last check timestamp, available version if any, and download progress; feeds from TelemetryFrame update fields; referenced by UpdateState enum in Android client
             │
             └── charts/
                 ├── LiveCPUChart.tsx                       # Canvas/SVG real-time chart of live CPU load per device; windowed to last 60 data points
                 ├── MemoryFootprintChart.tsx               # Live graph plotting JVM cache budgets, GC pause events, and native heap usage over time
                 ├── RiskScoreChart.tsx                     # Interactive chart plotting SoftRebootPredictor risk score history; threshold lines at 50 (warn) and 75 (critical)
-                ├── BufferHealthChart.tsx                  # [NEW] Real-time chart of audio capture buffer fill level (0-100%); plots underrun events; critical for diagnosing capture pipeline starvation on Nokia C22; data sourced from TelemetryFrame.bufferLevel
-                └── ThermalChart.tsx                       # [NEW] Real-time chart of SoC temperature over time from TelemetryFrame.thermalTemp; threshold lines matching ThermalMitigationPolicy levels; more operationally relevant for Nokia C22 diagnosis than CPU chart alone
+                ├── BufferHealthChart.tsx                  # Real-time chart of audio capture buffer fill level (0-100%); plots underrun events; critical for diagnosing capture pipeline starvation on Nokia C22; data sourced from TelemetryFrame.bufferLevel
+                └── ThermalChart.tsx                       # Real-time chart of SoC temperature over time from TelemetryFrame.thermalTemp; threshold lines matching ThermalMitigationPolicy levels; more operationally relevant for Nokia C22 diagnosis than CPU chart alone
 ```
 
 ---
