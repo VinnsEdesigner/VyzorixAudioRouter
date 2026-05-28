@@ -1,4 +1,4 @@
-# VyzorixAudioRouter — Main Codebase GitHub Workflows
+# VyzorixAudioRouter — Main Codebase Git Workflows
 
 ```
 .github/
