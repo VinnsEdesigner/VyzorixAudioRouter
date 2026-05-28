@@ -136,7 +136,7 @@ VyzorixAudioRouter/
 │   │           │   ├── RiskLevel.kt                       # STABLE, ELEVATED, HIGH, CRITICAL
 │   │           │   ├── FocusLossType.kt                   # TRANSIENT, TRANSIENT_CAN_DUCK, PERMANENT
 │   │           │   ├── UpdateState.kt                     # NOT_CHECKED, AVAILABLE, DOWNLOADING, DOWNLOADED, INSTALLING, SUCCESS, FAILED
-│   │           │   └── CommandValidationResult.kt         # [NEW] Enum for HMAC validation outcomes: VALID, INVALID_SIGNATURE,
+│   │           │   └── CommandValidationResult.kt         #  Enum for HMAC validation outcomes: VALID, INVALID_SIGNATURE,
 │   │           │                                          # EXPIRED_TIMESTAMP, REPLAYED_NONCE; used by CommandHmacValidator
 │   │           │                                          # and propagated through RemoteCommandExecutor rejection path
 │   │           ├── extensions/
@@ -147,7 +147,7 @@ VyzorixAudioRouter/
 │   │           │   ├── AccessibilityExtensions.kt         # Helpers: extractDialogText(), getWindowPackageName()
 │   │           │   ├── CursorExtensions.kt                # Helpers: toCrashEventList(), toRouteHistoryList()
 │   │           │   ├── NetworkExtensions.kt               # Helpers: isConnected(), isMetered(), getActiveNetworkType()
-│   │           │   └── ByteArrayExtensions.kt             # [NEW] Helpers: toHex(), hexToByteArray(); used by
+│   │           │   └── ByteArrayExtensions.kt             #  Helpers: toHex(), hexToByteArray(); used by
 │   │           │                                          # CommandHmacValidator for HMAC byte encoding and
 │   │           │                                          # constant-time comparison of computed vs received HMAC strings
 │   │           ├── model/
@@ -243,7 +243,7 @@ VyzorixAudioRouter/
 │   │           │   ├── SettingsDataStore.kt               # Proto/DataStore configuration persistence
 │   │           │   ├── RuntimeFlagsStore.kt               # Dynamic feature flags
 │   │           │   ├── ProjectionMetadataStore.kt         # Projection metadata persistence only
-│   │           │   └── DeviceSecretStore.kt               # [NEW] Encrypted persistence of per-device command_secret
+│   │           │   └── DeviceSecretStore.kt               # Encrypted persistence of per-device command_secret
 │   │           │                                          # received from server during POST /v1/device/register;
 │   │           │                                          # encrypted via TokenEncryptor.kt before write using AES-GCM
 │   │           │                                          # key from KeystoreManager; never stored plaintext anywhere;
@@ -402,7 +402,7 @@ VyzorixAudioRouter/
 │               │   │   ├── CaptureOwnershipArbitrator.kt  # Resolves multi-app capture conflicts
 │               │   │   ├── MediaSessionWatcher.kt         # Watches for new media players starting
 │               │   │   ├── PlaybackOriginClassifier.kt    # Categorizes streams (music vs system alerts)
-│               │   │   ├── MediaSessionStateMonitor.kt    # [RENAMED from PlaybackStateMonitor] Passive listener for
+│               │   │   ├── MediaSessionStateMonitor.kt    # Passive listener for
 │               │   │   │                                  # player changes; notifies capture engines to adjust buffers;
 │               │   │   │                                  # renamed to resolve collision with monitoring/SystemPlaybackMonitor
 │               │   │   └── SessionEvictionPolicy.kt       # Drops stale inactive playback structures
@@ -566,7 +566,7 @@ VyzorixAudioRouter/
 │               │   ├── HeadsetStateMonitor.kt             # Physical headphone jack state via native system listeners
 │               │   ├── BluetoothRouteMonitor.kt           # A2DP, SCO, HFP Bluetooth profile state changes
 │               │   ├── AudioFocusMonitor.kt               # System-wide focus owner tracking
-│               │   ├── SystemPlaybackMonitor.kt           # [RENAMED from PlaybackStateMonitor] System-level active media
+│               │   ├── SystemPlaybackMonitor.kt           # System-level active media
 │               │   │                                      # playback states; renamed to resolve name collision with
 │               │   │                                      # audio/media/MediaSessionStateMonitor.kt
 │               │   ├── DeviceThermalMonitor.kt            # SoC thermal sensor polling; notifies on limit exceeded
@@ -660,14 +660,14 @@ VyzorixAudioRouter/
 │               │   ├── SafeIntentSanitizer.kt             # Sanitizes incoming intents; prevents redirect attacks
 │               │   ├── TokenEncryptor.kt                  # AES-GCM encryption/decryption for command_secret and
 │               │   │                                      # projection credentials before persistent storage write
-│               │   ├── CommandHmacValidator.kt            # [NEW] HMAC-SHA256 recomputation and validation for all
+│               │   ├── CommandHmacValidator.kt            #  HMAC-SHA256 recomputation and validation for all
 │               │   │                                      # incoming C2 commands (both WebSocket and FCM paths);
 │               │   │                                      # canonical string: transactionId|deviceId|action|timestampMs
 │               │   │                                      # |nonce|params; constant-time byte comparison to prevent
 │               │   │                                      # timing attacks; timestamp ±30s window check; delegates nonce
 │               │   │                                      # deduplication to NonceCache; returns CommandValidationResult
 │               │   │                                      # enum; called by RemoteCommandExecutor and FcmCommandParser
-│               │   └── NonceCache.kt                      # [NEW] Thread-safe TTL-based nonce deduplication store;
+│               │   └── NonceCache.kt                      #Thread-safe TTL-based nonce deduplication store;
 │               │                                          # prevents replay attacks within the 30s timestamp window;
 │               │                                          # LinkedHashMap with LRU eviction; 5min TTL; 200 entry max
 │               │                                          # (~8KB footprint on 2GB device); lazy eviction on store();
@@ -760,7 +760,7 @@ VyzorixAudioRouter/
 │                   ├── WebSocketReconnectionPolicy.kt     # Randomized exponential backoff with jitter
 │                   ├── WebSocketTelemetryDispatcher.kt    # Encodes and streams risk scores, buffer levels, route states
 │                   ├── WebSocketSessionMetadata.kt        # Connection histories, session durations, bytes transmitted
-│                   └── PendingResultQueue.kt              # [NEW] Thread-safe in-memory queue of CommandResult JSON
+│                   └── PendingResultQueue.kt              # Thread-safe in-memory queue of CommandResult JSON
 │                                                          # payloads that could not be dispatched because WebSocket
 │                                                          # was reconnecting at time of FCM-triggered command execution;
 │                                                          # ArrayDeque protected by ReentrantLock; 50 entry max cap;
@@ -793,7 +793,7 @@ VyzorixAudioRouter/
 │   ├── AUTOMATION_SAFETY.md
 │   ├── THREADING_MODEL.md
 │   ├── FEATURES.md                                        # Updated: HMAC signing + FCM result queue added to arch diagram, §3.1 command catalog, §3.2 JSON schema, §5.1 FCM lifecycle
-│   ├── COMMAND_SECURITY.md                                # [NEW] Full HMAC signing spec, nonce format, timestamp window, replay cache, key establishment flow
+│   ├── COMMAND_SECURITY.md                                #  Full HMAC signing spec, nonce format, timestamp window, replay cache, key establishment flow
 │   ├── CI_CD_WORKFLOWS.md
 │   ├── DOC_1_BOOTSTRAP_AND_ORCHESTRATION.md
 │   ├── DOC_2_ACCESSIBILITY_AND_AUTOMATION_GOVERNANCE.md
