@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'doc**'
+      - 'doc/**'
   workflow_dispatch:
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
       - name: Stash folder contents
         run: |
           mkdir -p /tmp/sync-stash
-          cp -r docs/. /tmp/sync-stash/
+          cp -r doc/. /tmp/sync-stash/
 
       - name: Checkout Destination Repo
         uses: actions/checkout@v4
