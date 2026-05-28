@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'doc/**'
+      - 'doc**'
   workflow_dispatch:
 
 jobs:
@@ -29,8 +29,8 @@ jobs:
 
       - name: Move files to destination folder
         run: |
-          mkdir -p dest-repo-workspace/docs
-          cp -r /tmp/sync-stash/. dest-repo-workspace/docs/
+          mkdir -p dest-repo-workspace/doc
+          cp -r /tmp/sync-stash/. dest-repo-workspace/doc/
 
       - name: Commit and Push Changes
         run: |
