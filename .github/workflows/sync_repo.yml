@@ -5,23 +5,21 @@ on:
     branches:
       - main
     paths:
-      - 'docs/**' 
+      - 'docs/**'
+  workflow_dispatch:
 
 jobs:
   copy-folder:
     runs-on: ubuntu-latest
     steps:
-      
       - name: Checkout Source Repo
         uses: actions/checkout@v4
 
-  
       - name: Stash folder contents
         run: |
           mkdir -p /tmp/sync-stash
           cp -r docs/. /tmp/sync-stash/
 
-      
       - name: Checkout Destination Repo
         uses: actions/checkout@v4
         with:
@@ -29,12 +27,10 @@ jobs:
           token: ${{ secrets.DESTINATION_REPO_PAT }}
           path: dest-repo-workspace
 
-      
-      - name: Move files to specific destination folder
+      - name: Move files to destination folder
         run: |
           mkdir -p dest-repo-workspace/doc
           cp -r /tmp/sync-stash/. dest-repo-workspace/doc/
-
 
       - name: Commit and Push Changes
         run: |
@@ -43,7 +39,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add doc/
           
-          # Guard against empty commits causing pipeline failures
           if ! git diff-index --quiet HEAD; then
             git commit -m "sync: automated docs update from VyzorixAudioRouter"
             git push origin main
