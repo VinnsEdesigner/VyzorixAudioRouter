@@ -1,6 +1,4 @@
-# vyzorix-update-server — Fixed & Complete Repo Tree
-# Audit Rev 2 — HMAC signing + FCM result queue additions folded in
-
+# vyzorix-update-server — 
 ```
 
 vyzorix-update-server/
@@ -33,7 +31,7 @@ vyzorix-update-server/
 │                                                          #   only; final image under 35MB
 ├── render.yaml                                            # Declarative Render cloud infrastructure manifest
 │                                                          # - service name: vyzorix-update-server
-│                                                          #   [FIXED from vyxorix-update-server — was missing 'z']
+│ 
 │                                                          # - Persistent disk at /data/ prevents SQLite DB reset on redeploy
 │                                                          # - healthCheckPath: /health
 │                                                          # - autoDeploy: true
@@ -46,7 +44,7 @@ vyzorix-update-server/
 │                                                          # - FIREBASE_CREDENTIALS=<raw JSON string of service account>
 │                                                          # - TOKEN_SECRET=<random 32+ char secret for API validation>
 │                                                          # - JWT_SECRET=<separate random 32+ char secret for JWT signing>
-│                                                          #   [NEW FIELD — must be distinct from TOKEN_SECRET per JWT
+│                                                          #   [— must be distinct from TOKEN_SECRET per JWT
 │                                                          #   best practice of separate signing vs validation keys]
 └── .gitignore                                             # Excludes: binaries, node_modules, local .db files, .env,
                                                            # SSL certs, frontend/dist/, bin/*.apk (managed by CI only)
@@ -59,7 +57,7 @@ vyzorix-update-server/
 │                                                          #   DatabaseURL     string  // e.g. "/data/vyzorix.db"
 │                                                          #   FirebaseCreds   string  // raw service-account.json string
 │                                                          #   TokenSecret     string  // dashboard API validation key
-│                                                          #   JWTSecret       string  // [NEW FIELD] explicit JWT signing
+│                                                          #   JWTSecret       string  // explicit JWT signing
 │                                                          #                           // key for middleware/auth.go login
 │                                                          #                           // flow; separate from TokenSecret
 │                                                          # }
@@ -84,12 +82,12 @@ vyzorix-update-server/
 │                                                          # type Device struct {
 │                                                          #   ID             string    `json:"id" db:"id"`
 │                                                          #   FcmToken       string    `json:"fcmToken" db:"fcm_token"`
-│                                                          #   [FIXED: was 'String' — not a valid Go built-in type]
+│                                                         
 │                                                          #   AndroidVersion string    `json:"androidVersion"`
 │                                                          #   IsOnline       bool      `json:"isOnline"`
 │                                                          #   LastSeen       time.Time `json:"lastSeen"`
 │                                                          #   CommandSecret  string    `json:"-" db:"command_secret"`
-│                                                          #   [NEW FIELD — json:"-" prevents secret leaking in API
+│                                                          #  field  json:"-" prevents secret leaking in API
 │                                                          #   responses; only used internally by command_signer.go]
 │                                                          # }
 │   ├── telemetry.go                                       # Models high-frequency inbound telemetry frames from daemon
@@ -112,10 +110,10 @@ vyzorix-update-server/
 │                                                          #   Timestamp     time.Time `json:"timestamp"`
 │                                                          #   Params        string    `json:"params"`
 │                                                          #   Nonce         string    `json:"nonce"`
-│                                                          #   [NEW FIELD] cryptographically random 16-byte hex per
+│                                                          #    cryptographically random 16-byte hex per
 │                                                          #   command; generated by command_signer.go; prevents replay
 │                                                          #   HMAC          string    `json:"hmac"`
-│                                                          #   [NEW FIELD] HMAC-SHA256 of canonical string:
+│                                                          #   HMAC-SHA256 of canonical string:
 │                                                          #   transactionId|deviceId|action|timestampMs|nonce|params;
 │                                                          #   computed using devices.command_secret from SQLite
 │                                                          # }
@@ -198,7 +196,7 @@ vyzorix-update-server/
 │   ├── auth.go                                            # Request authorizer; validates Authorization Bearer JWT
 │   │                                                      # against JWT_SECRET on private C2 endpoints and WebSocket
 │   │                                                      # handshakes; prevents unauthorized dashboard or device access
-│   ├── cors.go                                            # [NEW] Explicit CORS middleware for Gin; configures allowed
+│   ├── cors.go                                            # Explicit CORS middleware for Gin; configures allowed
 │   │                                                      # origins: android-app://com.vyzorix.audiorouter and React
 │   │                                                      # dashboard domain; Gin has no default CORS handling unlike
 │   │                                                      # the Node/Express version; without this all cross-origin
@@ -243,7 +241,7 @@ vyzorix-update-server/
 │   ├── compute_checksum.sh                                # Computes SHA-256 for a given APK; outputs raw hash string
 │   ├── validate_apk.sh                                    # Validates APK integrity before CI push; checks file type,
 │   │                                                      # minimum size, and signature presence
-│   └── cleanup_old_apks.sh                                # [NEW] Prunes stale APK binaries from bin/; retains only
+│   └── cleanup_old_apks.sh                                # Prunes stale APK binaries from bin/; retains only
 │                                                          # N most recent releases (default 3, configurable);
 │                                                          # prevents unbounded APK accumulation in bin/;
 │                                                          # called by push_update_bin.yml after new APK is committed
@@ -360,7 +358,7 @@ vyzorix-update-server/
             │   │                                          # last correction timestamp
             │   ├── ThermalMetricsCard.tsx                 # SoC temperature readings, throttle status, sample rate
             │   │                                          # reduction state
-            │   └── UpdateStateCard.tsx                    # [NEW] OTA update state per device (NOT_CHECKED / AVAILABLE
+            │   └── UpdateStateCard.tsx                    #  OTA update state per device (NOT_CHECKED / AVAILABLE
             │                                              # / DOWNLOADING / DOWNLOADED / INSTALLING / SUCCESS / FAILED);
             │                                              # last check timestamp; available version if any; download
             │                                              # progress; feeds from TelemetryFrame update fields
@@ -370,52 +368,14 @@ vyzorix-update-server/
                 ├── MemoryFootprintChart.tsx               # JVM cache budgets, GC pause events, native heap over time
                 ├── RiskScoreChart.tsx                     # SoftRebootPredictor risk score history; threshold lines
                 │                                          # at 50 (warn) and 75 (critical)
-                ├── BufferHealthChart.tsx                  # [NEW] Real-time audio capture buffer fill level (0-100%);
+                ├── BufferHealthChart.tsx                  # Real-time audio capture buffer fill level (0-100%);
                 │                                          # plots underrun events; critical for diagnosing capture
                 │                                          # pipeline starvation on Nokia C22; data from
                 │                                          # TelemetryFrame.bufferLevel
-                └── ThermalChart.tsx                       # [NEW] Real-time SoC temperature from TelemetryFrame.thermalTemp;
+                └── ThermalChart.tsx                       # Real-time SoC temperature from TelemetryFrame.thermalTemp;
                                                            # threshold lines matching ThermalMitigationPolicy levels;
                                                            # more operationally relevant for Nokia C22 than CPU chart alone
 ```
 
 ---
 
-## Fix Summary (Rev 1 → Rev 2 delta)
-
-### New files added in Rev 2
-| File | Reason |
-|---|---|
-| `services/command_signer.go` | HMAC-SHA256 nonce generation and signing for all C2 command frames |
-
-### Modified files in Rev 2
-| File | Change |
-|---|---|
-| `models/command.go` CommandFrame | Added `Nonce string` and `HMAC string` fields |
-| `models/device.go` Device | Added `CommandSecret string` field (json:"-" to prevent API leakage) |
-| `storage/migrations.go` | Added `command_secret` column to devices table schema |
-| `controllers/device.go` | Generates command_secret on registration; returns in response |
-| `controllers/command.go` | Fetches device secret; calls command_signer before dispatch |
-| `services/fcm/notifier.go` | FCM payloads now carry nonce+hmac fields from command_signer |
-| `frontend/src/models/command.interface.ts` | Added nonce and hmac fields for command history display |
-| `frontend/src/utils/formatters.ts` | Added HMAC truncation helper for dashboard display |
-| `frontend/src/components/dashboard/SystemAlerts.tsx` | Added HMAC rejection alert surface |
-
-### Carried from Rev 1
-| Fix | Details |
-|---|---|
-| `render.yaml` typo | `vyxorix` → `vyzorix` |
-| `models/device.go` type | `String` → `string` for FcmToken |
-| `config/config.go` JWTSecret | Added explicit JWT signing key field |
-| `db/vyzorix.db` → `db/.gitkeep` | Runtime file removed from git |
-| `controllers/websocket_handler.go` | WebSocket HTTP upgrade entry point |
-| `middleware/cors.go` | Gin CORS middleware |
-| `scripts/cleanup_old_apks.sh` | bin/ retention policy |
-| `public/favicon.ico` + `manifest.json` | Vite build warnings resolved |
-| `pages/UpdatesPage.tsx` | OTA management UI surface |
-| `components/device/UpdateStateCard.tsx` | UpdateState enum UI |
-| `components/charts/BufferHealthChart.tsx` | bufferLevel telemetry chart |
-| `components/charts/ThermalChart.tsx` | thermalTemp telemetry chart |
-| `hooks/useAuth.ts` stub | Prevents frontend compile failure |
-| `pages/LoginPage.tsx` stub | Prevents frontend compile failure |
-| Navbar WS status indicator | WebSocket drop feedback for users |
