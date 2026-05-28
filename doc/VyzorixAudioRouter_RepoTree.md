@@ -77,10 +77,10 @@ VyzorixAudioRouter/
 │       │   └── update_progress.xml                        # Layout for UpdateNotificationHandler (download progress bar)
 │       │
 │       └── raw/
-│           └── silent_anchor.wav                          # Silent VoIP anchor sample played by FocusPersistenceEngine via USAGE_VOICE_COMMUNICATION to maintain focus lock
-│                                                          # - Accessed by core/services via RawResourceUriHelper in core/common
-│                                                          # - Must NOT be copied to core/services/res/raw/ — URI helper pattern avoids cross-module resource access
-│
+│       |    └── silent_anchor.wav                          # Silent VoIP anchor sample played by FocusPersistenceEngine via USAGE_VOICE_COMMUNICATION to maintain focus lock
+│       |                                                   # - Accessed by core/services via RawResourceUriHelper in core/common
+│       |                                                   # - Must NOT be copied to core/services/res/raw/ — URI helper pattern avoids cross-module resource access
+|       |
 │       └── kotlin/com/vyzorix/audiorouter/
 │           ├── VyzorixApplication.kt                      # Application entry point
 │           │                                              # - Registers GlobalExceptionHandler
