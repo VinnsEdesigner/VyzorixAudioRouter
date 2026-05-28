@@ -1,5 +1,4 @@
-# VyzorixAudioRouter — Fixed & Complete Repo Tree
-# Audit Rev 3 — HMAC signing + FCM result queue additions folded in
+# VyzorixAudioRouter — 
 
 ```
 
