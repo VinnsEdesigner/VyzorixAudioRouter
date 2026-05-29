@@ -78,6 +78,33 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!--
+          Layer 5 — Notification dashboard:
+          NotificationActionReceiver is the single broadcast receiver for
+          Pause/Resume, Restart, and Stop dashboard buttons. exported=false
+          because every PendingIntent we hand to the system targets it by
+          explicit ComponentName.
+        -->
+        <receiver
+            android:name="com.vyzorix.audiorouter.services.foreground.actions.NotificationActionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vyzorix.audiorouter.intent.action.NOTIFICATION_ACTION" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          Layer 5 — Notification dashboard:
+          SilentKeepAliveService holds a Binder reference for the daemon
+          process so the Nokia C22 Evenwell killer does not class us as a
+          lower-priority process between audio-active windows.
+        -->
+        <service
+            android:name="com.vyzorix.audiorouter.services.foreground.SilentKeepAliveService"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
 </manifest>

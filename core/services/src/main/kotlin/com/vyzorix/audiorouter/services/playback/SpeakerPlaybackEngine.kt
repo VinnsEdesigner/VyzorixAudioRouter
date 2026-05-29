@@ -24,7 +24,6 @@
 
 package com.vyzorix.audiorouter.services.playback
 
-import android.media.AudioTrack
 import com.vyzorix.audiorouter.services.capture.FrameSink
 import com.vyzorix.audiorouter.services.logging.DaemonLogger
 import java.util.concurrent.ArrayBlockingQueue
@@ -68,21 +67,24 @@ public class SpeakerPlaybackEngine(
     private val trackFactory: AudioTrackFactory,
     private val underrunRecovery: UnderrunRecovery,
     private val latencyOptimizer: LatencyOptimizer,
+    private val trackController: AudioTrackController = AudioTrackController(),
     private val playbackDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val frameQueueCapacity: Int = DEFAULT_FRAME_QUEUE_CAPACITY,
     private val nowMicros: () -> Long = { System.nanoTime() / 1_000L },
     private val clock: () -> Long = { System.currentTimeMillis() },
-) : FrameSink {
+) : FrameSink, RecoveryObserver {
 
     private val queue: ArrayBlockingQueue<PcmFrame> = ArrayBlockingQueue(frameQueueCapacity)
     private val running: AtomicBoolean = AtomicBoolean(false)
-    private val trackRef: AtomicReference<AudioTrack?> = AtomicReference(null)
     private val playbackJob: AtomicReference<Job?> = AtomicReference(null)
     private val framesWritten: AtomicLong = AtomicLong(0L)
     private val bytesWritten: AtomicLong = AtomicLong(0L)
     private val droppedFrames: AtomicLong = AtomicLong(0L)
     private val lastWriteEpochMs: AtomicLong = AtomicLong(0L)
     private val trackConfigRef: AtomicReference<AudioTrackConfig> = AtomicReference(AudioTrackConfig())
+
+    /** Expose the controller so RouteRecoveryEngine + PlaybackGainController can call into it. */
+    public val controller: AudioTrackController get() = trackController
 
     /** Internal frame container. */
     private data class PcmFrame(
@@ -115,22 +117,24 @@ public class SpeakerPlaybackEngine(
             )
             return PlaybackStartResult.Failed(buildResult.reason, buildResult.cause)
         }
-        val track = buildResult.track
-        try {
-            track.play()
-        } catch (t: Throwable) {
+        val mounted = trackController.mount(buildResult.track)
+        if (mounted is MountResult.Rejected) {
             DaemonLogger.get().error(
                 TAG,
-                "playback.start.failed phase=play err=${t.javaClass.simpleName} msg=${t.message}",
+                "playback.start.failed phase=mount reason=${mounted.reason}",
             )
-            track.release()
-            return PlaybackStartResult.Failed("audio_track_play_threw", t)
+            buildResult.track.release()
+            return PlaybackStartResult.Failed("track_controller_rejected_${mounted.reason}")
         }
-        trackRef.set(track)
+        if (!trackController.play()) {
+            DaemonLogger.get().error(TAG, "playback.start.failed phase=play")
+            trackController.releaseAndUnmount()
+            return PlaybackStartResult.Failed("audio_track_play_threw")
+        }
         trackConfigRef.set(config)
         running.set(true)
         val job = scope.launch(playbackDispatcher) {
-            playbackLoop(track = track, config = config)
+            playbackLoop(config = config)
         }
         playbackJob.set(job)
         DaemonLogger.get().info(
@@ -154,27 +158,28 @@ public class SpeakerPlaybackEngine(
                 )
             }
         }
-        val track = trackRef.getAndSet(null)
-        if (track != null) {
-            try {
-                track.stop()
-            } catch (t: Throwable) {
-                DaemonLogger.get().warn(
-                    TAG,
-                    "playback.stop.track_stop_failed err=${t.javaClass.simpleName}",
-                )
-            }
-            try {
-                track.release()
-            } catch (t: Throwable) {
-                DaemonLogger.get().warn(
-                    TAG,
-                    "playback.stop.track_release_failed err=${t.javaClass.simpleName}",
-                )
-            }
-        }
+        trackController.stop()
+        trackController.releaseAndUnmount()
         queue.clear()
         DaemonLogger.get().info(TAG, "playback.stop.complete")
+    }
+
+    /** RouteRecoveryEngine — invoked AFTER a fresh AudioTrack has been mounted. */
+    public override fun onRouteRebuilt(track: PlaybackTrackResult.Success) {
+        framesWritten.set(0L)
+        bytesWritten.set(0L)
+        // Drop any frames buffered against the old route — they were captured
+        // when the speaker was off the bus and would produce a transient hop.
+        queue.clear()
+        DaemonLogger.get().info(
+            TAG,
+            "playback.route.rebuilt queue_cleared=true",
+        )
+    }
+
+    /** RouteRecoveryEngine — invoked when the rebuild failed. */
+    public override fun onRouteRebuildFailed(reason: String) {
+        DaemonLogger.get().warn(TAG, "playback.route.rebuild_failed reason=$reason")
     }
 
     // FrameSink — capture engine forwards bytes here.
@@ -206,25 +211,29 @@ public class SpeakerPlaybackEngine(
         }
     }
 
-    private suspend fun playbackLoop(track: AudioTrack, config: AudioTrackConfig) {
+    private suspend fun playbackLoop(config: AudioTrackConfig) {
         val pollIntervalMs = POLL_INTERVAL_MS
         while (scope.isActive && running.get()) {
             val frame = queue.poll(pollIntervalMs, TimeUnit.MILLISECONDS)
             if (frame != null) {
                 val start = nowMicros()
-                val written = try {
-                    track.write(frame.bytes, frame.offsetBytes, frame.lengthBytes)
-                } catch (t: Throwable) {
-                    DaemonLogger.get().warn(
-                        TAG,
-                        "playback.write.threw err=${t.javaClass.simpleName} msg=${t.message}",
-                    )
-                    -1
+                val writeOutcome = trackController.write(
+                    frame.bytes,
+                    frame.offsetBytes,
+                    frame.lengthBytes,
+                )
+                val written: Int = when (writeOutcome) {
+                    is ControllerWriteResult.Wrote -> writeOutcome.bytesWritten
+                    is ControllerWriteResult.NotMounted -> 0
+                    is ControllerWriteResult.Failed -> {
+                        DaemonLogger.get().warn(
+                            TAG,
+                            "playback.write.failed code=${writeOutcome.errorCode}",
+                        )
+                        -1
+                    }
                 }
-                if (written < 0) {
-                    DaemonLogger.get().warn(TAG, "playback.write.failed code=$written")
-                    break
-                }
+                if (written < 0) break
                 if (written > 0) {
                     framesWritten.incrementAndGet()
                     bytesWritten.addAndGet(written.toLong())
@@ -232,7 +241,7 @@ public class SpeakerPlaybackEngine(
                     val elapsedMicros = nowMicros() - start
                     latencyOptimizer.recordWriteLatency(elapsedMicros)
                 }
-                if (written < frame.lengthBytes) {
+                if (written in 0 until frame.lengthBytes) {
                     latencyOptimizer.recordUnderrun()
                 }
             } else {
@@ -244,14 +253,15 @@ public class SpeakerPlaybackEngine(
                 )
                 if (decision is UnderrunDecision.InjectSilence) {
                     val start = nowMicros()
-                    val written = try {
-                        track.write(decision.silenceBytes, 0, decision.silenceLengthBytes)
-                    } catch (t: Throwable) {
-                        DaemonLogger.get().warn(
-                            TAG,
-                            "playback.silence.threw err=${t.javaClass.simpleName}",
-                        )
-                        -1
+                    val writeOutcome = trackController.write(
+                        decision.silenceBytes,
+                        0,
+                        decision.silenceLengthBytes,
+                    )
+                    val written: Int = when (writeOutcome) {
+                        is ControllerWriteResult.Wrote -> writeOutcome.bytesWritten
+                        is ControllerWriteResult.NotMounted -> 0
+                        is ControllerWriteResult.Failed -> -1
                     }
                     if (written > 0) {
                         val elapsedMicros = nowMicros() - start

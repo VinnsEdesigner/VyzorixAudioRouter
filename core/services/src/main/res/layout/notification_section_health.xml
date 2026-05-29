@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tier 3: system health (memory, thermal, risk). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/notification_section_health_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
+        android:text="Health" />
+
+    <TextView
+        android:id="@+id/notification_section_health_risk"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification"
+        android:text="Risk: STABLE" />
+
+    <TextView
+        android:id="@+id/notification_section_health_memory"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
+        android:text="memory: —" />
+
+    <TextView
+        android:id="@+id/notification_section_health_thermal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
+        android:text="thermal: —" />
+
+    <TextView
+        android:id="@+id/notification_section_health_uptime"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
+        android:text="uptime: —" />
+
+</LinearLayout>

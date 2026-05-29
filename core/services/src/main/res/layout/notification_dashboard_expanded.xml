@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Expanded (Tier 2 + Tier 3) RemoteViews surface for the daemon
+  notification. Composed of <include> directives for each tier card.
+  RemoteViews allows <include> at the top level so each tier ships as
+  a separate layout file for maintainability.
+
+  Note: RemoteViews does NOT allow generic <View> elements. Dividers
+  are rendered as zero-text TextViews with a 1dp height + grey
+  background — the only RemoteView-compatible primitive that gives
+  the same visual effect.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <include
+        android:id="@+id/notification_dashboard_expanded_route"
+        layout="@layout/notification_section_route" />
+
+    <TextView
+        android:id="@+id/notification_divider_route_capture"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="6dp"
+        android:background="@android:color/darker_gray"
+        android:text="" />
+
+    <include
+        android:id="@+id/notification_dashboard_expanded_capture"
+        layout="@layout/notification_section_capture" />
+
+    <TextView
+        android:id="@+id/notification_divider_capture_health"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="6dp"
+        android:background="@android:color/darker_gray"
+        android:text="" />
+
+    <include
+        android:id="@+id/notification_dashboard_expanded_health"
+        layout="@layout/notification_section_health" />
+
+    <TextView
+        android:id="@+id/notification_divider_health_diagnostics"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="6dp"
+        android:background="@android:color/darker_gray"
+        android:text="" />
+
+    <include
+        android:id="@+id/notification_dashboard_expanded_diagnostics"
+        layout="@layout/notification_section_diagnostics" />
+
+</LinearLayout>
