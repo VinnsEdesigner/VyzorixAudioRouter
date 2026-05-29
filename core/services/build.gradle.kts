@@ -58,6 +58,10 @@ dependencies {
     // lives in :core:data and that module owns the migrations.
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    // Layer 4 — Capture pipeline persists projection metadata via DataStore
+    // Preferences. We add the dependency at the services layer because the
+    // wiring (DataStore<Preferences> instance) is owned by DaemonStorageProvider.
+    implementation(libs.androidx.datastore.preferences)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlin.test.junit)

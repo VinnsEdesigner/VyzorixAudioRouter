@@ -18,6 +18,14 @@
          PersistentAudioService's foregroundServiceType in the manifest. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <!-- Layer 4 — capture pipeline.
+         FOREGROUND_SERVICE_MEDIA_PROJECTION lets us combine the
+         mediaProjection type onto PersistentAudioService when a capture
+         session is active. RECORD_AUDIO is required to instantiate
+         AudioRecord against an AudioPlaybackCaptureConfiguration. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- AudioManager.mode + setSpeakerphoneOn require MODIFY_AUDIO_SETTINGS. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
@@ -70,6 +78,19 @@
           fully-qualified name. AGP de-duplicates identical service entries;
           this stays as documentation for code reviewers.
         -->
+
+        <!--
+          Layer 4 — ProjectionPermissionActivity. Translucent one-shot
+          trampoline that requests a MediaProjection token. Not exported
+          (only the daemon launches it) and themed translucent so the
+          user never sees a visible window.
+        -->
+        <activity
+            android:name=".ProjectionPermissionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Vyzorix.Trampoline" />
 
     </application>
 

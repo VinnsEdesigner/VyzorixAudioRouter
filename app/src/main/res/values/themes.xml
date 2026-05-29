@@ -6,4 +6,18 @@
       single throwaway screen the user sees once.
     -->
     <style name="Theme.Vyzorix.Bootstrap" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar" />
+
+    <!--
+      Layer-4 trampoline theme. The ProjectionPermissionActivity is a
+      one-shot translucent activity that never paints any UI — it only
+      exists to host the createScreenCaptureIntent() startActivityForResult
+      cycle. We pick Theme.Translucent.NoTitleBar so the window is fully
+      invisible, no animations fire, and the underlying app remains in
+      the foreground from the user's perspective.
+    -->
+    <style name="Theme.Vyzorix.Trampoline" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowNoDisplay">false</item>
+    </style>
 </resources>
