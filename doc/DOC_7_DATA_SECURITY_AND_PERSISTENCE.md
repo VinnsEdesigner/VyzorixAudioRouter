@@ -9,7 +9,7 @@ This document is Part 7 of the 8-part Vyzorix System Mapping. It details the SQL
 
 `KeystoreManager` is the single root-of-trust for ALL local cryptography in the daemon. It seals two distinct downstream secrets:
 
-1. The **SQLCipher master passcode** that decrypts the Room database (`DaemonDatabase`). Wrapped by `CryptoHelper` via AES-GCM-NoPadding.
+1. The **SQLCipher master passcode** that decrypts the Room database (`AppDatabase`). Wrapped by `CryptoHelper` via AES-GCM-NoPadding.
 2. The **C2 `command_secret`** (32 random bytes / 64 hex chars) that authenticates remote commands. Wrapped by `TokenEncryptor` via AES-GCM and persisted by `DeviceSecretStore` to a dedicated DataStore file. See `COMMAND_SECURITY.md` for the full HMAC contract.
 
 Both secrets share the same hardware-key envelope but live in different on-disk containers (Room DB vs DataStore). They are NEVER stored in plaintext anywhere on disk, in logcat, or in crash dumps. The `command_secret` in particular is never held in a non-scoped variable for longer than the `CommandHmacValidator.validate()` call.
@@ -35,7 +35,7 @@ The following mapping outlines the sequential steps executed when the database i
                     SecureSupportHelper (Room DB Build)
                                     │
                                     ▼ (Transparent decrypt on disk)
-                   DaemonDatabase (SQLite Secure tables)
+                   AppDatabase (SQLite Secure tables)
 ```
 
 ## 1.1 Command Secret Storage Flow (Separate from Database)
@@ -125,7 +125,7 @@ core/data/src/main/kotlin/com/vyzorix/audiorouter/data/database/SecureSupportHel
 core/data/src/main/kotlin/com/vyzorix/audiorouter/data/datastore/DeviceSecretStore.kt
 core/services/src/main/kotlin/com/vyzorix/audiorouter/services/security/
 ├── ServicePermissionVerifier.kt
-├── ProjectionTokenValidator.kt
+# NOTE: ProjectionTokenValidator.kt folded into ProjectionTokenManager (ADR-0006).
 ├── AccessibilityIntegrityChecker.kt
 ├── SafeIntentSanitizer.kt
 ├── TokenEncryptor.kt
@@ -155,9 +155,8 @@ Note on layout: `KeystoreManager` is the canonical location for hardware-backed 
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/security/ServicePermissionVerifier.kt`
 *   **Architectural Role**: Validates permission states before executing privileged commands (such as verifying `MODIFY_AUDIO_SETTINGS` before forcing routes).
 
-### 3.5 `ProjectionTokenValidator.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/security/ProjectionTokenValidator.kt`
-*   **Architectural Role**: Verifies `MediaProjection` token validity, ensuring expired tokens are flagged for re-grant.
+### 3.5 ~~`ProjectionTokenValidator.kt`~~ — folded into `ProjectionTokenManager` (ADR-0006)
+*   **Architectural Role**: Token validation is part of the token's lifecycle. A single class (`ProjectionTokenManager`, under `core/services/projection/`) owns acquire / validate / refresh / store. The old separation between manager and validator created an artificial boundary; the manager itself now exposes `isValid()` and `refreshIfExpired()` directly.
 
 ### 3.6 `AccessibilityIntegrityChecker.kt`
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/security/AccessibilityIntegrityChecker.kt`
@@ -184,7 +183,7 @@ Note on layout: `KeystoreManager` is the canonical location for hardware-backed 
     suspend fun put(secret: String)
     suspend fun getSecret(): String?           // decrypts on each read; never caches plaintext
     suspend fun clear()                          // for deregistration / safe-mode wipe
-    val hasSecret: Flow<Boolean>                 // for BootStateRestorer and DaemonStatusProvider
+    val hasSecret: Flow<Boolean>                 // for BootStateRestorer and DaemonStatusAggregator
     ```
 *   **Storage**: Preferences DataStore (`device_secret.preferences_pb`) holding only the AES-GCM blob produced by `TokenEncryptor.encrypt()`. The plaintext `command_secret` is **never** written to disk, never written to logcat, never included in `CrashSnapshotExporter` bundles, and never serialized into `LastKnownStateDumper.last_state.json`.
 *   **Key material**: Sourced from `KeystoreManager` via `TokenEncryptor`. On Unisoc SC9863A devices where hardware-backed Keystore is unreliable, the software fallback documented in §3.1 applies (key derived from install-time UUID + salt). This is acceptable for the threat model in `COMMAND_SECURITY.md` §1 — the secret is still bound to this specific install and cannot be lifted by reading the DataStore file alone.

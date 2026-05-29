@@ -1,4 +1,6 @@
-# COMMAND_SECURITY.md — Remote Command Signing, Replay Protection, and Key Establishment
+# COMMAND_SECURITY.md — Remote Command Signing, Replay Protection, and Key Establishment (deep-dive of DOC_8)
+
+> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md).** DOC_8 is the canonical spec for the C2 stack; this document covers the HMAC contract, replay protection, and per-device secret flow at implementation depth. See ADR-0001 (C2 stack rationale) and ADR-0005 (WebSocket + FCM dual-channel) for the higher-level design decisions.
 
 ## Document Purpose
 This document defines the full security contract for remote C2 commands issued from the
@@ -15,6 +17,10 @@ WebSocket frames.
 
 ## 1. Threat Model
 
+**Deployment posture (read this first).** VyzorixAudioRouter currently ships to a **single personal device** (the project owner's Nokia C22). It is **not** designed for adversarial multi-tenant environments. The security depth documented below — HMAC-SHA256, per-device secret, nonce cache, replay window, certificate pinning — is **defense-in-depth for future scaling**, not because there is an active adversary today. We keep this depth in the design because the infrastructure cost to remove it later (after the architecture is depended on) is much higher than the cost to keep it now. If you are reading this and wondering "why is a personal project doing HMAC for a single device?", that is the answer.
+
+The threat coverage table below assumes the **future-scaled** deployment, where the same code may serve multiple devices and a non-trusted Vyzorix dashboard. For the current single-device deployment, the practical attackers are limited to "someone who pulls the device APK and tries to talk to my server" — which all the mechanisms below still cover.
+
 | Threat | TLS Coverage | HMAC Coverage |
 |---|---|---|
 | Network eavesdropping | ✅ | N/A |
@@ -23,6 +29,13 @@ WebSocket frames.
 | Captured WebSocket frame replayed later | ❌ | ✅ (nonce + timestamp window) |
 | MITM on WSS connection | ✅ (certificate pinning recommended) | N/A |
 | Physical device dump of command secret | ❌ | ✅ (secret encrypted via TokenEncryptor.kt) |
+
+**Explicitly out of scope** for the current deployment:
+- Physical access to the device by a sophisticated adversary (the C22's Unisoc TEE is itself unreliable — see DOC_7 §3.1).
+- A compromised Google account that can hijack the FCM channel — FCM is an unauthenticated wake channel here, not a command-authority channel (ADR-0005). Compromise of FCM lets an attacker wake the daemon and prompt it to reconnect to the WSS, but commands themselves must still pass HMAC validation.
+- A compromised Nokia firmware that exfiltrates the encrypted secret blob from disk. If the C22 vendor firmware is compromised, this app's security is the least of the user's problems.
+
+See also: ADR-0001 (rationale for the C2 stack depth) and ADR-0005 (WebSocket + FCM dual-channel rationale).
 
 ---
 

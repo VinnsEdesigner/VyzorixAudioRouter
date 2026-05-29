@@ -1,4 +1,4 @@
-# BUILD_ORDER.md — Phase 1 Layered Build Sequence
+# BUILD_ORDER.md — Phase 1 Layered Build Sequence (Mock-First)
 
 ## Document Purpose
 
@@ -9,7 +9,18 @@ phase 1 → complete android service first
 phase 2 → render update section
 ```
 
-That is too vague to build from. With a codebase this size — the `VyzorixAudioRouter_RepoTree.md` lists well over 200 Kotlin files across 30+ packages plus a C++ native layer — you cannot just "start writing the Android service" without a concrete sequence. You will end up writing `DiagnosticCompression.kt` before `SpeakerForceEngine.kt` is even tested on the Nokia C22.
+That framing has a chicken-and-egg problem: Layer 8 (WebSocket + FCM + HMAC, the C2 stack) cannot be meaningfully tested without a server, but the server was previously slotted into Phase 2 — meaning "Phase 1 done" would never actually be testable end-to-end. This was identified in ADR-0009 and resolved by reframing phases as **mock-first** (see also `README.md` Phases section):
+
+| Phase | What ships |
+|-------|-----------|
+| **Phase 1** | Device runs Layers 0–8 end-to-end against a **thin Go mock server** that lives in `vyzorix-update-server/cmd/mockserver/`. Phase 1 acceptance = 7 days continuous on the Nokia C22 against the mock. |
+| **Phase 1.5** | Replace the mock with the real `vyzorix-update-server` (Render-backed, SQLite, secret store, REST + WSS). **No code changes on device.** Only environment config (`updateServerUrl`). |
+| **Phase 2** | Vyzorix dashboard (React) + OTA flow from the real server + telemetry visualization. |
+| **Phase 3** | Hardening: key rotation, multi-device, audit logging, secret store migration to KMS. |
+
+The mock server is a real Go binary (not test fixtures), implementing just enough of `DEVICE_REGISTRATION.md` to make Layer 8 testable end-to-end. See `CI_CD_WORKFLOWS.md` for how the mock is also used in CI.
+
+With a codebase this size — the `VyzorixAudioRouter_RepoTree.md` lists well over 200 Kotlin files across 30+ packages plus a C++ native layer — you cannot just "start writing the Android service" without a concrete sequence. You will end up writing `DiagnosticCompression.kt` before `SpeakerForceEngine.kt` is even tested on the Nokia C22.
 
 This document defines the **Phase 1 layered build order** so that:
 
@@ -17,10 +28,9 @@ This document defines the **Phase 1 layered build order** so that:
 2. The minimum viable audio slice runs on the Nokia C22 as early as Layer 3 — before the diagnostics, dashboard, update, and C2 stacks are built on top of it.
 3. Crashes at any layer have a known scope (e.g., a Layer 4 capture bug cannot break Layer 3's route enforcement).
 4. The team — including any LLM-assisted code generation — has a definite "what compiles next" answer at every step.
+5. Phase 1's acceptance is **not blocked on a fully built production server**.
 
-Phase 2 (Render update server + Vyzorix dashboard) only begins after Phase 1 Layer 8 is verified end-to-end on the Nokia C22.
-
-Cross-references: this document expands on `SYSTEM_MAP.md` §7 Lifecycle Dependency Graph. Every layer below maps to specific phases in that graph.
+Cross-references: this document expands on `SYSTEM_MAP.md` §7 Lifecycle Dependency Graph and ADR-0009 (phase-1 mock-first rationale). Every layer below maps to specific phases in that graph.
 
 ---
 
@@ -37,7 +47,7 @@ Layer 4 — Capture pipeline
           (MediaProjection trampoline + PlaybackCaptureEngine + native ring buffer +
            AudioPipelineController + IdleCaptureController + ProjectionDeathHandler)
 Layer 5 — Notification dashboard
-          (DaemonStatusProvider + ServiceNotificationDashboard + RemoteViews + tier 1/2/3)
+          (DaemonStatusAggregator + ServiceNotificationDashboard + RemoteViews + tier 1/2/3)
 Layer 6 — Crash / diagnostic stack
           (GlobalExceptionHandler, LogStreamCollector, RollingLogWriter,
            CrashSnapshotExporter, observers, soft-reboot detection)
@@ -84,7 +94,7 @@ Each layer below has: scope, files compiled, files explicitly stubbed-only, what
 **Scope:** Room + SQLCipher persistence, plus encrypted DataStore for the C2 secret. Fills in the Android-bound parts of `KeystoreManager`. No services yet.
 
 **Compiles (full implementation):**
-- `core/data/database/` — `DaemonDatabase.kt`, `SecureSupportHelper.kt`, `DaemonDatabaseMigrations.kt`, `CryptoHelper.kt`.
+- `core/data/database/` — `AppDatabase.kt`, `SecureSupportHelper.kt`, `AppDatabaseMigrations.kt`, `CryptoHelper.kt`.
 - `core/data/dao/` — `DaemonStateDao`, `CrashEventDao`, `UpdateStateDao`, etc.
 - `core/data/entity/` — Room entities.
 - `core/data/converters/` — Room `TypeConverter`s.
@@ -97,11 +107,11 @@ Each layer below has: scope, files compiled, files explicitly stubbed-only, what
 
 **Success criteria:**
 - `./gradlew :core:data:assemble` succeeds.
-- Instrumented test that opens `DaemonDatabase`, writes a row, closes the DB, reopens it, reads the row back — verifying SQLCipher encryption is wired and `KeystoreManager` seal/unseal works.
+- Instrumented test that opens `AppDatabase`, writes a row, closes the DB, reopens it, reads the row back — verifying SQLCipher encryption is wired and `KeystoreManager` seal/unseal works.
 - `DeviceSecretStore.put(secret)` round-trips through `TokenEncryptor` and produces an encrypted blob on disk (the blob must be non-plaintext when inspected via `adb shell run-as`).
 
 **On-device verification (Nokia C22):**
-- Install a smoke-test APK that just calls `DaemonDatabase.getInstance(ctx)` from a JUnit instrumented test. Verify it does not crash on the SoC's quirky TEE. If `KeystoreManager` falls back to software-keyed encryption, this is logged but acceptable — that is by design on Unisoc.
+- Install a smoke-test APK that just calls `AppDatabase.getInstance(ctx)` from a JUnit instrumented test. Verify it does not crash on the SoC's quirky TEE. If `KeystoreManager` falls back to software-keyed encryption, this is logged but acceptable — that is by design on Unisoc.
 
 ---
 
@@ -172,10 +182,10 @@ If Layer 3 passes, the route-forcing thesis is proven on hardware. All later lay
 
 **Compiles (full implementation):**
 - `app/ProjectionPermissionActivity.kt`.
-- `core/services/capture/MediaProjectionCaptureSession.kt`, `PlaybackCaptureEngine.kt`, `CaptureLifecycleController.kt`, `CaptureRecoveryEngine.kt`, `ProjectionTokenManager.kt`, `TokenPersistence.kt`.
+- `core/services/capture/MediaProjectionSession.kt`, `PlaybackCaptureEngine.kt`, `CaptureLifecycleController.kt`, `CaptureRecoveryEngine.kt`, `ProjectionTokenManager.kt`, `TokenPersistence.kt`.
 - `core/services/capture/ProjectionDeathHandler.kt` — dedicated `MediaProjection.Callback.onStop()` handler; logs to `CrashTraceStore`; triggers `UiRecoveryDaemon`. See `MEDIA_PROJECTION_FLOW.md` §Zombie Prevention.
 - `core/services/capture/IdleCaptureController.kt` — silence-detection-driven idle pause for the native PCM pipeline. See `MEDIA_PROJECTION_FLOW.md` §Battery & Soft Reboot Mitigation.
-- `core/services/managers/ProjectionSessionManager.kt`.
+- `core/services/managers/MediaProjectionSession.kt`.
 - `core/services/audio/AudioPipelineController.kt`, `SpeakerPlaybackEngine.kt`, `AudioTrackFactory.kt`, `LatencyOptimizer.kt`, `UnderrunRecovery.kt`.
 - `core/services/accessibility/*` — full set, including `DialogRecognitionEngine`, `AccessibilityGestureQueue`, `UiInteractionSnapshot` so the projection dialog auto-clicks "Start Now" headlessly.
 - `core/services/permissions/ProjectionGrantCache.kt`, `PermissionAutoGranter.kt`.
@@ -198,12 +208,13 @@ If Layer 3 passes, the route-forcing thesis is proven on hardware. All later lay
 
 ## Layer 5 — Notification Dashboard
 
-**Scope:** Make the daemon visible without launching a UI. `DaemonStatusProvider` aggregates from the now-existing subsystems and posts to a `RemoteViews`-based dashboard.
+**Scope:** Make the daemon visible without launching a UI. `DaemonStatusAggregator` aggregates from the now-existing subsystems and posts to a `RemoteViews`-based dashboard.
 
 **Compiles (full implementation):**
-- `core/services/foreground/DaemonStatusProvider.kt` — pulls from `SpeakerForceEngine`, `PlaybackCaptureEngine`, `CrashMetrics` (stub-only counters at this layer), `BatteryImpactMonitor` (stub-only), etc.
+- `core/services/foreground/DaemonStatusAggregator.kt` — pulls from `SpeakerForceEngine`, `PlaybackCaptureEngine`, `CrashMetrics` (stub-only counters at this layer), `BatteryImpactMonitor` (stub-only), etc.
 - `core/services/foreground/ServiceNotificationDashboard.kt` — Tier 1/2/3 expandable notification.
-- `core/services/foreground/SilentKeepAliveService.kt`, `ServiceHeartbeat.kt`, `ServiceRecoveryManager.kt`, `DaemonWatchdog.kt` (broad health), `PipelineHealthChecker.kt` (audio-only health).
+- `core/services/foreground/SilentKeepAliveService.kt`, `RecoveryCoordinator.kt` (Layer A — the sole restart authority), `LivenessProbe.kt` (Layer B signal, broad health, absorbs former `ServiceHeartbeat`), `PipelineHealthChecker.kt` (Layer B signal, audio-only health).
+- `core/services/foreground/signals/` — `SignalValue.kt`, `MemoryPressureSignal.kt`, `ThermalSignal.kt`, `ProjectionTokenSignal.kt`, `WebSocketConnectionSignal.kt`, `SafeModeSignal.kt`. **Stub-only at Layer 5** — the wiring through `DaemonStatusAggregator` is real, but signals that depend on later layers (`ProjectionTokenSignal`, `WebSocketConnectionSignal`) emit `UNKNOWN` until their owning layer is built. See ADR-0007.
 - `core/services/foreground/actions/` — `NotificationActionReceiver.kt`, `QuickToggleAction.kt`, `RestartPipelineAction.kt`, `EmergencyStopAction.kt`.
 - `core/services/compat/NotificationCompatBridge.kt`, `NotificationTrampolineCompat.kt`, `PendingIntentCompatPolicy.kt`.
 - `core/services/permissions/NotificationPermissionManager.kt`.
@@ -215,26 +226,26 @@ If Layer 3 passes, the route-forcing thesis is proven on hardware. All later lay
 **Success criteria:**
 - Pulling down the notification shade shows the Tier 1/2/3 layout with live data refreshed every 10s.
 - Quick actions work (toggle, restart pipeline, emergency stop).
-- `DaemonWatchdog` and `PipelineHealthChecker` distinction is visible in logs: the former pings broadly every 5s, the latter only audits AudioRecord/AudioTrack loops.
+- `LivenessProbe` and `PipelineHealthChecker` distinction is visible in logs: the former pings broadly every 5s, the latter only audits AudioRecord/AudioTrack loops.
 
 **On-device verification:**
 - Visually confirm the dashboard renders correctly on the Nokia C22's small display.
-- Kill `PersistentAudioService` from `adb shell am stopservice`. `DaemonWatchdog` should trigger restart via `ServiceRecoveryManager` within ~5s.
+- Kill `PersistentAudioService` from `adb shell am stopservice`. `LivenessProbe` should trigger restart via `RecoveryCoordinator` within ~5s.
 
 ---
 
 ## Layer 6 — Crash / Diagnostic Stack
 
-**Scope:** Now that audio works, instrument it. The diagnostic stack feeds `DaemonStatusProvider` so the dashboard light up with real risk scores.
+**Scope:** Now that audio works, instrument it. The diagnostic stack feeds `DaemonStatusAggregator` so the dashboard light up with real risk scores.
 
 **Compiles (full implementation):**
 - `core/services/crash/GlobalExceptionHandler.kt`, `NativeCrashMarker.kt`, `SoftRebootTracker.kt`, `LastKnownStateDumper.kt`.
-- `core/services/diagnostics/` — full package including `LogStreamCollector.kt`, `RollingLogWriter.kt`, `LogFileRotator.kt`, `CrashSnapshotExporter.kt`, `RoutingLogCollector.kt`, `AudioPolicySnapshot.kt`, `CrashTraceStore.kt`, `RuntimeEventTimeline.kt`, `RuntimeTraceAssembler.kt`, `DiagnosticCompression.kt`, `EventCorrelationEngine.kt`, `SystemHealthScorer.kt`.
-- `core/services/diagnostics/system/` — `AppLaunchObserver.kt`, `WindowTransitionTracker.kt`, `PackageStateObserver.kt`, `SoftRebootPredictor.kt`, `RendererFailureDetector.kt`.
-- `core/services/monitoring/` — `HeadsetStateMonitor.kt`, `BluetoothRouteMonitor.kt`, `AudioFocusMonitor.kt`, `SystemPlaybackMonitor.kt`, `DeviceThermalMonitor.kt`, `RuntimeMemoryMonitor.kt`, `ProcessHealthMonitor.kt`. (NetworkStateMonitor is Layer 7.)
+- `core/services/diagnostics/` — full package including `LogStreamCollector.kt`, `RollingLogWriter.kt`, `LogFileRotator.kt`, `CrashSnapshotExporter.kt`, `RoutingLogCollector.kt`, `AudioPolicySnapshot.kt`, `CrashTraceStore.kt`, `RuntimeEventTimeline.kt`, `RuntimeTraceAssembler.kt`, `DiagnosticCompression.kt`, `EventCorrelationEngine.kt`. (Former `SystemHealthScorer` folded into `DaemonStatusAggregator` per ADR-0007 — no separate file.)
+- `core/services/diagnostics/system/` — `AppLaunchObserver.kt`, `WindowTransitionTracker.kt`, `PackageStateObserver.kt`. (Former `SoftRebootPredictor` folded into `RecoveryCoordinator`'s soft-reboot risk policy; former `RendererFailureDetector` folded into `PipelineHealthChecker`. See NAMING_RENAMES.md.)
+- `core/services/monitoring/` — `HeadsetStateMonitor.kt`, `BluetoothRouteMonitor.kt`, `AudioFocusMonitor.kt`, `SystemPlaybackMonitor.kt`, `DeviceThermalMonitor.kt`, `RuntimeMemoryMonitor.kt`. (Former `ProcessHealthMonitor` split into `MemoryPressureSignal` + `LivenessProbe` — lives under `foreground/signals/` and `foreground/` respectively. NetworkStateMonitor is Layer 7.)
 - `core/services/metrics/` — `AudioLatencyMetrics.kt`, `RouteSwitchMetrics.kt`, `CrashMetrics.kt`, `CapturePerformanceTracker.kt`, `BatteryImpactMonitor.kt`.
 - `core/services/memory/` — all files in this package.
-- `core/services/stability/` — `CrashLoopProtector.kt`, `SafeModeController.kt` (NOTE: `NonceCache.clear()` call from SafeModeController is gated behind Layer 8 — leave that call as a TODO/stub in Layer 6), `StartupBackoffScheduler.kt`, `ProcessRestartLimiter.kt`.
+- `core/services/stability/` — `SafeModeController.kt` (NOTE: `NonceCache.clear()` call from SafeModeController is gated behind Layer 8 — leave that call as a TODO/stub in Layer 6), `StartupBackoffScheduler.kt`, `ProcessRestartLimiter.kt`. (Former `CrashLoopProtector` folded into `RecoveryCoordinator` per ADR-0007 — crash-loop policy lives in Layer A.)
 - `core/services/state/`, `core/services/storage/`, `core/services/fallback/`, `core/services/resilience/`, `core/services/oem/` (full registry including `DeviceQuirkRegistry.kt`, `UnisocPlatformTweaks.kt`, etc.), `core/services/receivers/` (`PackageChangeReceiver.kt`, etc.).
 - `AndroidManifest.xml` — add `QUERY_ALL_PACKAGES` for A11+ package state queries (see `SYSTEM_MAP.md` §11 Permission Matrix).
 
@@ -242,18 +253,18 @@ If Layer 3 passes, the route-forcing thesis is proven on hardware. All later lay
 - Update stack, FCM, WebSocket, HMAC remain stubbed.
 
 **Success criteria:**
-- `RiskScore` in the dashboard moves based on real signals (thermal, crash counters, soft-reboot predictor).
+- `RiskScore` in the dashboard moves based on real signals (thermal, crash counters, RecoveryCoordinator's soft-reboot risk policy).
 - Triggering a crash (e.g., via a test-only crash button hidden behind a debug build flag) produces a crash bundle exportable via `CrashSnapshotExporter`.
-- `SoftRebootPredictor` correctly logs uptime anomalies if you force-restart the device.
+- `SoftRebootTracker` correctly logs uptime anomalies if you force-restart the device (the tracker is the forensic instrument per ADR-0002 — NOT the predictor policy).
 
 **On-device verification:**
 - 7-day burn-in test on Nokia C22. Inspect `crash_bundle_*.log` files. No unexpected crashes. Soft reboot predictor's risk score remains <50 in normal use.
 
 ---
 
-## Layer 7 — Update System
+## Layer 7 — Update System (talks to the mock server)
 
-**Scope:** OTA updates pulling from the Render-backed update server. Phase 2 has not started yet — for now, the server endpoints can be served from a static `version.json` hosted on GitHub Pages or the eventual `vyzorix-update-server` repo with a dummy APK.
+**Scope:** OTA updates. Per the mock-first phase strategy (ADR-0009), Layer 7 talks to `vyzorix-update-server/cmd/mockserver/` — a real Go binary that serves `/api/v1/version` with a static `version.json` and a small dummy APK. The same endpoint URL switches to the real server at Phase 1.5 with no Android code change.
 
 **Compiles (full implementation):**
 - `core/services/updates/UpdateChecker.kt`, `UpdateConfig.kt`, `UpdateNotificationHandler.kt`, `UpdateDownloader.kt`, `UpdateDownloadService.kt` (`foregroundServiceType="dataSync"`), `UpdateInstaller.kt`, `UpdateStateStore.kt`, `UpdateStateMonitor.kt`.
@@ -264,6 +275,12 @@ If Layer 3 passes, the route-forcing thesis is proven on hardware. All later lay
 
 **Stubs only:**
 - C2 stack (Layer 8).
+
+**Mock-server deliverable for this layer** (`vyzorix-update-server/cmd/mockserver/`):
+- `GET /api/v1/version` — returns `version.json` with `version_code`, `version_name`, `apk_url`, `sha256`. Hardcoded for the test APK.
+- `GET /api/v1/apk/<filename>` — serves the dummy APK with `Accept-Ranges: bytes` for resume testing.
+- Supports `HEAD` for size pre-check.
+- ~80–150 lines of Go. Throwaway-style — the real server replaces this in Phase 1.5.
 
 **Success criteria:**
 - `UpdateChecker` polls `/api/v1/version`, compares to `BuildConfig.VERSION_CODE`, shows the "Update available" notification.
@@ -277,20 +294,28 @@ If Layer 3 passes, the route-forcing thesis is proven on hardware. All later lay
 
 ---
 
-## Layer 8 — WebSocket + FCM + HMAC (C2 Stack)
+## Layer 8 — WebSocket + FCM + HMAC (C2 Stack, talks to the mock server)
 
-**Scope:** Real-time command & telemetry. Everything in this layer assumes Layers 0–7 are stable, because a C2 stack failure must NOT take down the audio pipeline.
+**Scope:** Real-time command & telemetry. Everything in this layer assumes Layers 0–7 are stable, because a C2 stack failure must NOT take down the audio pipeline. Layer 8 talks to the same `vyzorix-update-server/cmd/mockserver/` binary that Layer 7 uses — the mock implements just enough of `DEVICE_REGISTRATION.md` to make HMAC, nonces, and reconnect flows testable end-to-end.
 
 **Compiles (full implementation):**
-- `core/services/security/CommandHmacValidator.kt`, `NonceCache.kt`, `TokenEncryptor.kt`, `ProjectionTokenValidator.kt`, `AccessibilityIntegrityChecker.kt`, `SafeIntentSanitizer.kt`, `ServicePermissionVerifier.kt`.
+- `core/services/security/CommandHmacValidator.kt`, `NonceCache.kt`, `TokenEncryptor.kt`, `AccessibilityIntegrityChecker.kt`, `SafeIntentSanitizer.kt`, `ServicePermissionVerifier.kt`. (Former `ProjectionTokenValidator` folded into `ProjectionTokenManager` per ADR-0006 — single class owns acquire/validate/refresh/store.)
 - `core/common/utils/KeystoreManager.kt` — make sure the C2 secret-sealing path is enabled (the body was added in Layer 1 but the `unsealCommandSecretKey()` call site is here).
 - `core/data/datastore/DeviceSecretStore.kt` — already exists from Layer 1; here we wire it to `CommandHmacValidator`.
-- `core/services/ipc/RemoteCommandExecutor.kt`, `RemoteCommandResultDispatcher.kt`, `AudioRouterBinder.kt`, `ServiceConnectionManager.kt`, `DaemonCommandDispatcher.kt`.
+- `core/services/ipc/RemoteCommandExecutor.kt`, `RemoteCommandResultDispatcher.kt`, `AudioRouterBinder.kt`, `ServiceConnectionManager.kt`, `RemoteCommandDispatcher.kt`.
 - `core/services/fcm/VyzorixMessagingService.kt`, `FcmCommandParser.kt`, `FcmTokenManager.kt`, `FcmNotificationGateway.kt`, `FcmWakeLockHolder.kt`, `FcmRegistrationWorker.kt`.
 - `core/services/websocket/WebSocketClientManager.kt`, `WebSocketConnectionListener.kt`, `WebSocketFrameHandler.kt`, `WebSocketKeepAliveEngine.kt`, `WebSocketReconnectionPolicy.kt`, `WebSocketTelemetryDispatcher.kt`, `WebSocketSessionMetadata.kt`, `PendingResultQueue.kt`.
 - Wire `SafeModeController.enter()` to actually call `NonceCache.clear()` (the call site was a TODO in Layer 6).
 
-**Stubs only:** None — Layer 8 closes out Phase 1.
+**Stubs only:** None — Layer 8 closes out Phase 1 against the mock.
+
+**Mock-server deliverable for this layer** (`vyzorix-update-server/cmd/mockserver/`, extended from Layer 7):
+- `POST /v1/device/register` — returns a deterministic command_secret (e.g., `0000...` in dev mode, or random+persisted to a file for soak tests). Idempotent on (`deviceId`, `firebaseInstallId`).
+- `WSS /v1/device/:id/stream` — accepts WS upgrade with HMAC headers; can issue signed test commands; receives telemetry frames.
+- `POST /v1/device/:id/command` — dashboard-style command-issuance endpoint that the mock signs on behalf of the (non-existent) dashboard.
+- `PATCH /v1/device/:id/fcm-token` — echoes the new token back.
+- No real persistence beyond an in-memory map. ~300–500 lines of Go total when combined with the Layer 7 endpoints. **Replaced by the real server in Phase 1.5.**
+- The mock also publishes a sample FCM-shaped command directly to the device via a local debug intent for offline FCM testing (since Firebase requires real network).
 
 **Success criteria:**
 - Device registers via `POST /v1/device/register`; receives `command_secret`; stores encrypted via `DeviceSecretStore`.
@@ -301,7 +326,7 @@ If Layer 3 passes, the route-forcing thesis is proven on hardware. All later lay
 - Cross-dispatcher test: under load, fire 100 commands across the `Default` and `IO` dispatchers concurrently and verify `NonceCache` / `PendingResultQueue` invariants (see `SYSTEM_MAP.md` §6.3).
 
 **On-device verification:**
-- E2E from the Vyzorix dashboard (when it exists in Phase 2 — for Layer 8 acceptance use a CLI client or Postman against the server).
+- E2E against the mock server (the Vyzorix dashboard does not exist until Phase 2 — use the mock's `POST /v1/device/:id/command` endpoint or a CLI client against the WSS).
 - 48-hour soak test with the device sleeping. Silent FCM push must wake the daemon and execute commands within the 10s / 20s wake-lock windows documented in `VyzorixAudioRouter_RepoTree.md` for `FcmWakeLockHolder.kt`.
 
 ---
@@ -342,12 +367,13 @@ Layers 4 and 5 can run in parallel after Layer 3 is verified. All other layers a
 
 ## "Definition of Done" for Phase 1
 
-Phase 1 is **complete** when:
+Phase 1 is **complete** (against the mock server) when:
 
 1. All 9 layers (0 through 8) compile, lint clean, detekt clean, and pass their on-device verification step on a real Nokia C22 (not an emulator — the Unisoc SC9863A quirks do not surface on emulators).
 2. `./gradlew :app:assembleRelease` produces a signed APK that is byte-identical to what `release.yml` would produce in CI.
-3. The 7-day burn-in test from Layer 6 has completed at least once on the C22 with no soft reboots and no audio dropouts >50ms.
-4. The HMAC / replay / disconnect tests from Layer 8 have all passed.
-5. `SYSTEM_MAP.md`, `BUILD_ORDER.md` (this file), `MEDIA_PROJECTION_FLOW.md`, `DOC_7_DATA_SECURITY_AND_PERSISTENCE.md`, `COMMAND_SECURITY.md`, `NOKIA_C22_NOTES.md`, and `CI_CD_WORKFLOWS.md` all reference the actually-shipped class names and behaviours — no stale references to types that were renamed during implementation.
+3. The 7-day burn-in test from Layer 6 has completed at least once on the C22 with no soft reboots and no audio dropouts >50ms, with the device pointed at the mock server.
+4. The HMAC / replay / disconnect tests from Layer 8 have all passed against the mock.
+5. The `vyzorix-update-server/cmd/mockserver/` Go binary is in the repo, builds with `go build`, and the integration test (`go test ./cmd/mockserver/...`) is green in CI.
+6. `SYSTEM_MAP.md`, `BUILD_ORDER.md` (this file), `MEDIA_PROJECTION_FLOW.md`, `DOC_7_DATA_SECURITY_AND_PERSISTENCE.md`, `COMMAND_SECURITY.md`, `NOKIA_C22_NOTES.md`, and `CI_CD_WORKFLOWS.md` all reference the actually-shipped class names and behaviours — no stale references to types that were renamed during implementation.
 
-Only then does Phase 2 (Render update server + Vyzorix dashboard) begin.
+Once Phase 1 is done, **Phase 1.5** swaps the mock for the real `vyzorix-update-server` (no Android code changes), and **Phase 2** (Vyzorix dashboard + OTA from real server) begins.

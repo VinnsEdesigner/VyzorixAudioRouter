@@ -1,5 +1,15 @@
 # vyzorix-update-server —  Repo Tree
 
+## Deployment notes
+
+**Render free tier cold-start mitigation.** The free Render hobby plan suspends a service after ~15 minutes of HTTP inactivity. Cold-start latency on resume is 20–40s, which would cause the device's WebSocket reconnect logic to fail several backoff retries before the server is reachable. **An external UptimeRobot monitor pings `https://<render-app>.onrender.com/health` every 5–10 minutes** to keep the dyno warm. This is the agreed-upon mitigation. The health endpoint is intentionally lightweight (`200 OK` with no DB query) so the keepalive ping does not generate meaningful load.
+
+If the UptimeRobot ping is ever removed, the device's `WebSocketReconnectionPolicy` will see longer disconnect windows after periods of low command traffic. The reconnect backoff schedule (1s → 2s → 4s → 8s → 16s → 32s) is designed to tolerate a 40s cold start, so the failure mode is "delayed reconnect", not "broken C2 channel".
+
+For Phase 1 (mock-first per ADR-0009), the mock server runs locally and does not need UptimeRobot.
+
+## Repo tree
+
 ```
 
 vyzorix-update-server/
@@ -246,7 +256,7 @@ vyzorix-update-server/
             └── charts/
                 ├── LiveCPUChart.tsx                       # Canvas/SVG real-time chart of live CPU load per device; windowed to last 60 data points
                 ├── MemoryFootprintChart.tsx               # Live graph plotting JVM cache budgets, GC pause events, and native heap usage over time
-                ├── RiskScoreChart.tsx                     # Interactive chart plotting SoftRebootPredictor risk score history; threshold lines at 50 (warn) and 75 (critical)
+                ├── RiskScoreChart.tsx                     # Interactive chart plotting RecoveryCoordinator risk-score history (from the soft-reboot policy that absorbed the former SoftRebootPredictor); threshold lines at 50 (warn) and 75 (critical)
                 ├── BufferHealthChart.tsx                  # Real-time chart of audio capture buffer fill level (0-100%); plots underrun events; critical for diagnosing capture pipeline starvation on Nokia C22; data sourced from TelemetryFrame.bufferLevel
                 └── ThermalChart.tsx                       # Real-time chart of SoC temperature over time from TelemetryFrame.thermalTemp; threshold lines matching ThermalMitigationPolicy levels; more operationally relevant for Nokia C22 diagnosis than CPU chart alone
 ```

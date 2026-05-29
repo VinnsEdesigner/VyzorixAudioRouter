@@ -135,7 +135,9 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/monitoring/
 ├── PlaybackStateMonitor.kt
 ├── DeviceThermalMonitor.kt
 ├── RuntimeMemoryMonitor.kt
-├── ProcessHealthMonitor.kt
+# NOTE: ProcessHealthMonitor.kt removed — split into MemoryPressureSignal + LivenessProbe (ADR-0007).
+#       Memory tracking → core/services/foreground/signals/MemoryPressureSignal.kt
+#       Process liveness → core/services/foreground/LivenessProbe.kt
 └── NetworkStateMonitor.kt
 ```
 
@@ -163,9 +165,11 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/monitoring/
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/monitoring/RuntimeMemoryMonitor.kt`
 *   **Architectural Role**: Tracks system-wide RAM metrics and raises alerts if available memory drops below critical thresholds.
 
-### 4.7 `ProcessHealthMonitor.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/monitoring/ProcessHealthMonitor.kt`
-*   **Architectural Role**: Watches process health, tracking memory leaks and process crashes.
+### 4.7 ~~`ProcessHealthMonitor.kt`~~ — split per ADR-0007
+*   **Architectural Role**: The two responsibilities (memory leak / pressure tracking, and process liveness) belong to two different signal sources in the three-layer health architecture:
+    *   Memory pressure → `core/services/foreground/signals/MemoryPressureSignal.kt`
+    *   Process liveness → `core/services/foreground/LivenessProbe.kt`
+    Both publish through `DaemonStatusAggregator` to `RecoveryCoordinator`.
 
 ### 4.8 `NetworkStateMonitor.kt`
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/monitoring/NetworkStateMonitor.kt`

@@ -22,7 +22,8 @@ The following mapping outlines the programmatic steps executed by the resilience
                                    BinderRecoveryLoop
                                            │
                                            ▼
-                                 CrashLoopProtector
+                                 RecoveryCoordinator
+                              (crash-loop policy, ADR-0007)
                                            │
                ┌───────────────────────────┴───────────────────────────┐
                │                                                       │
@@ -90,16 +91,14 @@ The `stability` submodule manages startup crash prevention, limits process resta
 
 ```text
 core/services/src/main/kotlin/com/vyzorix/audiorouter/services/stability/
-├── CrashLoopProtector.kt
+# NOTE: CrashLoopProtector.kt folded into RecoveryCoordinator (Layer A, ADR-0007).
 ├── SafeModeController.kt
 ├── StartupBackoffScheduler.kt
 └── ProcessRestartLimiter.kt
 ```
 
-### 3.1 `CrashLoopProtector.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/stability/CrashLoopProtector.kt`
-*   **Architectural Role**: Detects and mitigates rapid crash loops. It tracks the frequency of service initializations. If the daemon crashes more than 3 times within a rolling 5-minute window, it triggers `SafeModeController` to halt unneeded modules.
-*   **State Dependencies**: Persists startup timestamps inside `DaemonDatabase`.
+### 3.1 ~~`CrashLoopProtector.kt`~~ — folded into `RecoveryCoordinator` (ADR-0007)
+*   **Architectural Role**: Crash-loop detection is a recovery policy: "do not restart more than N times in M seconds." This policy now lives inside `RecoveryCoordinator` (Layer A). The coordinator persists startup timestamps inside `AppDatabase` and triggers `SafeModeController` when the policy fires. See `core/services/foreground/RecoveryCoordinator.kt`.
 
 ### 3.2 `SafeModeController.kt`
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/stability/SafeModeController.kt`

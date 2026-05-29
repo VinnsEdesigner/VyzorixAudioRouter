@@ -54,7 +54,7 @@ These features enable:
   │             └──────► RemoteCommandExecutor ──────────────────► KeystoreManager        │
   │                                   │                            (Sealed AES key)        │
   │                                   ▼                                   │                │
-  │                          DaemonCommandDispatcher                      │                │
+  │                          RemoteCommandDispatcher                      │                │
   │                                   │                          DeviceSecretStore ────────┘
   │                                   ▼                          (command_secret encrypted)│
   │                          Target Subsystem executes                                     │
@@ -276,7 +276,7 @@ Rejection result (HMAC validation failed):
 val databasePasscode = KeystoreManager.getDatabaseKey()
 val factory = SupportFactory(SQLiteDatabase.getBytes(databasePasscode))
 
-val db = Room.databaseBuilder(context, DaemonDatabase::class.java, "vyzorix_secure.db")
+val db = Room.databaseBuilder(context, AppDatabase::class.java, "vyzorix_secure.db")
     .openHelperFactory(factory)
     .build()
 ```
