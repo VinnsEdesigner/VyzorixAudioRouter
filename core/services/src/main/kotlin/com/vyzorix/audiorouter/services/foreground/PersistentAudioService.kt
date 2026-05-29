@@ -41,7 +41,9 @@
 package com.vyzorix.audiorouter.services.foreground
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.Activity
+import android.app.NotificationManager
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -50,8 +52,12 @@ import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.annotation.RequiresPermission
 import com.vyzorix.audiorouter.audioengine.AudioPipelineController
+import com.vyzorix.audiorouter.common.enums.CaptureState
+import com.vyzorix.audiorouter.common.enums.DaemonState
+import com.vyzorix.audiorouter.common.enums.RouteState
 import com.vyzorix.audiorouter.services.audio.AudioFocusHandler
 import com.vyzorix.audiorouter.services.audio.AudioRouteWatcher
 import com.vyzorix.audiorouter.services.capture.AudioCaptureConfig
@@ -67,7 +73,16 @@ import com.vyzorix.audiorouter.services.capture.ProjectionPermissionContract
 import com.vyzorix.audiorouter.services.capture.ProjectionTokenManager
 import com.vyzorix.audiorouter.services.capture.TokenPersistence
 import com.vyzorix.audiorouter.services.capture.TrampolineRecoveryCallback
+import com.vyzorix.audiorouter.services.foreground.actions.EmergencyStopAction
+import com.vyzorix.audiorouter.services.foreground.actions.QuickToggleAction
+import com.vyzorix.audiorouter.services.foreground.actions.RestartPipelineAction
+import com.vyzorix.audiorouter.services.foreground.signals.MemoryPressureSignal
+import com.vyzorix.audiorouter.services.foreground.signals.ProjectionTokenSignal
+import com.vyzorix.audiorouter.services.foreground.signals.SafeModeSignal
+import com.vyzorix.audiorouter.services.foreground.signals.ThermalSignal
+import com.vyzorix.audiorouter.services.foreground.signals.WebSocketConnectionSignal
 import com.vyzorix.audiorouter.services.logging.DaemonLogger
+import com.vyzorix.audiorouter.services.permissions.NotificationPermissionManager
 import com.vyzorix.audiorouter.services.managers.AudioRouteManager
 import com.vyzorix.audiorouter.services.managers.DaemonLifecycleManager
 import com.vyzorix.audiorouter.services.managers.SpeakerForceManager
@@ -84,10 +99,15 @@ import com.vyzorix.audiorouter.services.state.DaemonStorageProvider
 import com.vyzorix.audiorouter.services.voip.CommunicationRouter
 import com.vyzorix.audiorouter.services.voip.RoutePersistenceDaemon
 import com.vyzorix.audiorouter.services.voip.SilentVoipSession
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 /** Foreground service that holds the audio-routing daemon's process. */
 public class PersistentAudioService : Service() {
@@ -130,6 +150,28 @@ public class PersistentAudioService : Service() {
         private set
 
     private val projectionResultReceiver: BroadcastReceiver = ProjectionResultReceiver()
+
+    // Layer 5 — Notification dashboard / health stack.
+    private lateinit var notificationManager: NotificationManager
+    private lateinit var notificationPermissionManager: NotificationPermissionManager
+    private lateinit var memoryPressureSignal: MemoryPressureSignal
+    private lateinit var thermalSignal: ThermalSignal
+    private lateinit var projectionTokenSignal: ProjectionTokenSignal
+    private lateinit var webSocketConnectionSignal: WebSocketConnectionSignal
+    private lateinit var safeModeSignal: SafeModeSignal
+    private lateinit var livenessProbe: LivenessProbe
+    private lateinit var pipelineHealthChecker: PipelineHealthChecker
+    private lateinit var statusAggregator: DaemonStatusAggregator
+    private lateinit var recoveryCoordinator: RecoveryCoordinator
+    private lateinit var dashboard: ServiceNotificationDashboard
+    private lateinit var keepAliveBinder: SilentKeepAliveBinder
+
+    private val daemonState: AtomicReference<DaemonState> = AtomicReference(DaemonState.INITIALIZING)
+    private val routeState: AtomicReference<RouteState> = AtomicReference(RouteState.UNKNOWN)
+    private val captureState: AtomicReference<CaptureState> = AtomicReference(CaptureState.IDLE)
+    private val lastCommandAtMs: AtomicLong = AtomicLong(0L)
+    private var dashboardJob: Job? = null
+    private var paused: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -231,22 +273,157 @@ public class PersistentAudioService : Service() {
         captureLifecycleController.bootstrap()
         speakerPlaybackEngine.start()
         registerProjectionReceiver()
+
+        // Layer 5 — wire the health stack + dashboard.
+        notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationPermissionManager = NotificationPermissionManager(this, notificationManager)
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        memoryPressureSignal = MemoryPressureSignal(activityManager = activityManager)
+        thermalSignal = ThermalSignal(powerManager = powerManager)
+        projectionTokenSignal = ProjectionTokenSignal(tokenManager)
+        webSocketConnectionSignal = WebSocketConnectionSignal(
+            probeProvider = { null },
+        )
+        livenessProbe = LivenessProbe(scope = scope)
+        pipelineHealthChecker = PipelineHealthChecker()
+        val contextProvider = object : DaemonStatusContextProvider {
+            override fun daemonState(): DaemonState = daemonState.get()
+            override fun routeState(): RouteState = routeState.get()
+            override fun captureState(): CaptureState = captureState.get()
+            override fun lastCommandAtEpochMs(): Long? =
+                lastCommandAtMs.get().takeIf { it > 0L }
+            override fun websocketConnected(): Boolean = false
+        }
+        statusAggregator = DaemonStatusAggregator(
+            scope = scope,
+            contextProvider = contextProvider,
+            sources = listOf(
+                livenessProbe,
+                pipelineHealthChecker,
+                memoryPressureSignal,
+                thermalSignal,
+                projectionTokenSignal,
+                webSocketConnectionSignal,
+            ),
+        )
+        recoveryCoordinator = RecoveryCoordinator(
+            scope = scope,
+            aggregator = statusAggregator,
+            callback = object : RecoveryCallback {
+                override fun restartPipeline(reason: String) {
+                    DaemonLogger.get().warn(SERVICE_TAG, "recovery.restart_pipeline reason=$reason")
+                    runCatching { captureLifecycleController.stop() }
+                    runCatching { speakerForceManager.disengage() }
+                    runCatching { speakerForceManager.engage() }
+                    runCatching { captureLifecycleController.bootstrap() }
+                }
+                override fun stopForGood(reason: String) {
+                    DaemonLogger.get().error(SERVICE_TAG, "recovery.stop_for_good reason=$reason")
+                    stopSelf()
+                }
+                override fun onSafeModeChanged(active: Boolean, reason: String) {
+                    DaemonLogger.get().info(
+                        SERVICE_TAG,
+                        "recovery.safe_mode active=$active reason=$reason",
+                    )
+                }
+            },
+        )
+        safeModeSignal = SafeModeSignal(probeProvider = { recoveryCoordinator })
+        statusAggregator.addSource(safeModeSignal)
+        dashboard = ServiceNotificationDashboard(context = this)
+        keepAliveBinder = SilentKeepAliveBinder(this)
+        keepAliveBinder.bind()
+        livenessProbe.start()
+        statusAggregator.start()
+        recoveryCoordinator.start()
+        startDashboardRefreshLoop()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         promoteToForeground()
         lifecycle.start()
+        daemonState.set(DaemonState.RUNNING)
+        handleCommand(intent)
         // START_STICKY so that the OS re-creates the daemon if it kills us
         // for memory pressure — the Nokia C22 LMK strategy is aggressive.
         return START_STICKY
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (::memoryPressureSignal.isInitialized) {
+            memoryPressureSignal.onTrimMemory(level)
+        }
+    }
+
+    private fun handleCommand(intent: Intent?) {
+        if (intent == null) return
+        when (intent.action) {
+            QuickToggleAction.ACTION_SERVICE_TOGGLE -> {
+                lastCommandAtMs.set(System.currentTimeMillis())
+                if (paused) {
+                    DaemonLogger.get().info(SERVICE_TAG, "command.quick_toggle.resume")
+                    speakerForceManager.resume()
+                    daemonState.set(DaemonState.RUNNING)
+                    paused = false
+                } else {
+                    DaemonLogger.get().info(SERVICE_TAG, "command.quick_toggle.pause")
+                    speakerForceManager.pauseForFocusLoss()
+                    daemonState.set(DaemonState.SAFE_MODE)
+                    paused = true
+                }
+            }
+            RestartPipelineAction.ACTION_SERVICE_RESTART -> {
+                lastCommandAtMs.set(System.currentTimeMillis())
+                val rationale = intent.getStringExtra(
+                    com.vyzorix.audiorouter.services.foreground.actions.NotificationActionReceiver.EXTRA_RATIONALE,
+                ) ?: "user_requested"
+                DaemonLogger.get().info(SERVICE_TAG, "command.restart_pipeline rationale=$rationale")
+                recoveryCoordinator.requestRestart(rationale)
+            }
+            EmergencyStopAction.ACTION_SERVICE_EMERGENCY_STOP -> {
+                lastCommandAtMs.set(System.currentTimeMillis())
+                DaemonLogger.get().warn(SERVICE_TAG, "command.emergency_stop")
+                daemonState.set(DaemonState.STOPPED)
+                stopSelf()
+            }
+            else -> Unit
+        }
+    }
+
+    private fun startDashboardRefreshLoop() {
+        dashboardJob = scope.launch(Dispatchers.IO) {
+            statusAggregator.statusFlow.collectLatest { tick ->
+                try {
+                    val notification = dashboard.build(tick)
+                    notificationManager.notify(
+                        ServiceNotificationDashboard.NOTIFICATION_ID,
+                        notification,
+                    )
+                } catch (t: Throwable) {
+                    DaemonLogger.get().warn(
+                        SERVICE_TAG,
+                        "dashboard.refresh.threw err=${t.javaClass.simpleName} msg=${t.message}",
+                    )
+                }
+            }
+        }
+    }
+
     override fun onDestroy() {
+        runCatching { dashboardJob?.cancel() }
+        runCatching { recoveryCoordinator.stop() }
+        runCatching { statusAggregator.stop() }
+        runCatching { livenessProbe.stop() }
+        runCatching { keepAliveBinder.unbind() }
         runCatching { captureLifecycleController.stop() }
         runCatching { speakerPlaybackEngine.stop() }
         runCatching { pipelineController.stop() }
         runCatching { unregisterReceiver(projectionResultReceiver) }
         lifecycle.shutdown()
+        daemonState.set(DaemonState.STOPPED)
         // SupervisorJob.cancel() in shutdown() may have already cancelled
         // the scope, but call again defensively.
         runCatching { scope.cancel() }

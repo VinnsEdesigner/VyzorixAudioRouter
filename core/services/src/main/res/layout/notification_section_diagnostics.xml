@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tier 3 diagnostics — auto-cycling notes (the aggregator's notes list
+  composed from WARN/CRIT signals). Up to 4 lines visible at once; older
+  notes are dropped client-side by ServiceNotificationDashboard.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/notification_section_diagnostics_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
+        android:text="Diagnostics" />
+
+    <TextView
+        android:id="@+id/notification_section_diagnostics_note_1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
+        android:singleLine="true"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/notification_section_diagnostics_note_2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
+        android:singleLine="true"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/notification_section_diagnostics_note_3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
+        android:singleLine="true"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/notification_section_diagnostics_note_4"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
+        android:singleLine="true"
+        android:text="" />
+
+</LinearLayout>

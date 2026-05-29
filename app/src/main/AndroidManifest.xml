@@ -35,6 +35,12 @@
     <!-- A13+ runtime permission for posting the foreground notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Layer 5 — FullScreenIntentBridge surfaces the re-grant prompt
+         even on a locked screen. A14 added a runtime permission to gate
+         this capability; the daemon's CATEGORY_CALL notification is the
+         canonical exception for permission-renewal flows. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <!-- PARTIAL_WAKE_LOCK keeps the CPU awake while the SpeakerForceEngine
          tick loop is engaged. Without it the 500ms cadence drifts past 1s on
          AGGRESSIVE-restriction OEMs like Nokia (Evenwell). -->
