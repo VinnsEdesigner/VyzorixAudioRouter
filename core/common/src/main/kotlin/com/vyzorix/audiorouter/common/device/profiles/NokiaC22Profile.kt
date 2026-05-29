@@ -28,5 +28,8 @@ public val NokiaC22Profile: DeviceQuirkProfile = DeviceQuirkProfile(
         AudioModeQuirk.PHANTOM_HEADSET_AT_BOOT,
         AudioModeQuirk.UNRELIABLE_BLUETOOTH_SCO,
     ),
+    // 4s window — the Nokia C22 Zygote-stage race documented in
+    // doc/NOKIA_C22_NOTES.md §1 disappears beyond ~3s after process start.
+    zygoteSafeDelayMs = 4_000L,
     notes = "Fried hardware codec — speaker output is software-only via MediaProjection capture.",
 )
