@@ -17,9 +17,11 @@
 
         <!--
           PersistentAudioService — Phase 1 Layer 3 daemon.
-          - foregroundServiceType is mediaPlayback because Layer 3 plays a
-            silent VoIP anchor track to hold the OS in VoIP-mode dominance.
-            (Layer 4 will add mediaProjection once capture is wired.)
+          - foregroundServiceType is mediaPlayback|mediaProjection: Layer 3
+            plays a silent VoIP anchor track to hold the OS in VoIP-mode
+            dominance, and Layer 4 (this revision) additionally captures
+            system audio via MediaProjection. Both subsystems share the
+            same Service instance so we OR the foreground-service types.
           - exported=false: this service is never started from outside the
             app's own process. RouterAccessibilityService / BootReceiver
             start it via explicit Intent.
@@ -27,7 +29,7 @@
         <service
             android:name="com.vyzorix.audiorouter.services.foreground.PersistentAudioService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:foregroundServiceType="mediaPlayback|mediaProjection" />
 
         <!--
           BootReceiver — re-starts the daemon after a device reboot.

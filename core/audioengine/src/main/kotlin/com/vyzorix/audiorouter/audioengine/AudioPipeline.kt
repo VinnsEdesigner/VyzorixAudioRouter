@@ -142,6 +142,39 @@ public class AudioPipeline(
     /** Native ring buffer handle; only valid while the pipeline is started. */
     public fun ringBufferHandle(): Long = ringBufferHandle
 
+    /**
+     * Native ring buffer handle exposed as a property for fast access by
+     * Layer 4's [AudioPipelineController]. Returns `0L` when the pipeline
+     * is not started.
+     */
+    public val activeRingBufferHandle: Long
+        get() = ringBufferHandle
+
+    /**
+     * Bridge-level write — Layer 4's [AudioPipelineController.feedCapturedFrame]
+     * routes captured PCM through here. Exposed as `internal` so tests
+     * inside the audioengine module can call it directly; external callers
+     * MUST go through [AudioPipelineController].
+     */
+    internal fun bridgeWrite(
+        handle: Long,
+        src: ByteArray,
+        offsetBytes: Int,
+        lengthBytes: Int,
+    ): Int = bridge.write(handle = handle, src = src, offsetBytes = offsetBytes, lengthBytes = lengthBytes)
+
+    /** Bridge-level read; see [bridgeWrite]. */
+    internal fun bridgeRead(
+        handle: Long,
+        dst: ByteArray,
+        offsetBytes: Int,
+        lengthBytes: Int,
+    ): Int = bridge.read(handle = handle, dst = dst, offsetBytes = offsetBytes, lengthBytes = lengthBytes)
+
+    /** Bridge-level available-read; see [bridgeWrite]. */
+    internal fun bridgeAvailableReadBytes(handle: Long): Int =
+        bridge.availableRead(handle)
+
     private fun buildHealth(handle: Long, priority: NativeAudioBridge.PriorityResult): AudioEngineHealthState {
         val used = bridge.availableRead(handle)
         val free = bridge.availableWrite(handle)
