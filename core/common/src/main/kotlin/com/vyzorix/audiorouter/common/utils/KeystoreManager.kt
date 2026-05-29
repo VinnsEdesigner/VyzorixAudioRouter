@@ -4,26 +4,42 @@ package com.vyzorix.audiorouter.common.utils
  * Sealed Android Keystore manager — secures the SQLCipher passphrase and the
  * per-device `command_secret` key.
  *
- * Layer 0 ships ONLY the interface (per BUILD_ORDER.md §"Stubs only"). The
- * Android Keystore-backed implementation arrives in Layer 1 once `core/data`
- * is wired up and a `Context` is available; the C2 unsealCommandSecretKey()
- * call site is enabled in Layer 8.
+ * Layer 1 (this PR) fills in the implementation. There are two concrete
+ * back-ends:
+ *  - [AndroidKeystoreManager] — TEE/StrongBox-backed key material via the
+ *    `AndroidKeyStore` provider.
+ *  - [SoftwareKeystoreManager] — install-time-derived software key. Used on
+ *    devices with [com.vyzorix.audiorouter.common.device.KeystoreReliability.UNRELIABLE_USE_SOFTWARE_FALLBACK]
+ *    (e.g. Nokia C22 / Unisoc SC9863A — see doc/NOKIA_C22_NOTES.md and
+ *    doc/DOC_7_DATA_SECURITY_AND_PERSISTENCE.md §3.1).
  *
- * Devices with [com.vyzorix.audiorouter.common.device.KeystoreReliability.UNRELIABLE_USE_SOFTWARE_FALLBACK]
- * use a software-only implementation — see doc/NOKIA_C22_NOTES.md.
+ * Pick a back-end via [KeystoreManagerFactory.create].
+ *
+ * Crypto contract: every [seal]/[unseal] pair is AES-256-GCM with a fresh
+ * 12-byte IV and a 128-bit auth tag. The on-disk blob layout is
+ * `IV || ciphertext_with_tag`, hex-encoded for transport through
+ * `String`-typed preference / DataStore containers.
+ *
+ * Thread-safety: implementations are safe for concurrent use from any
+ * dispatcher (operations create a fresh `Cipher` instance per call).
  */
 public interface KeystoreManager {
 
-    /** Seals [plaintext] under a hardware-backed key, returning the sealed blob (hex). */
+    /**
+     * Encrypts [plaintext] under the manager's master key and returns the
+     * sealed blob as hex (`IV || ciphertext_with_tag`).
+     */
     public fun seal(plaintext: ByteArray): String
 
-    /** Unseals a previously [seal]ed blob. Throws if the blob has been tampered with. */
+    /**
+     * Decrypts a previously [seal]ed hex blob. Throws
+     * [KeystoreFailureException] (cause: `AEADBadTagException`) if the auth
+     * tag does not verify — callers MUST treat that as evidence of tampering
+     * and not silently regenerate the underlying secret.
+     */
     public fun unseal(sealed: String): ByteArray
 
-    /** Convenience: unseal the per-device `command_secret` and return it as raw bytes. */
-    public fun unsealCommandSecretKey(): ByteArray
-
-    /** True iff the implementation backs onto hardware keystore (TEE / StrongBox). */
+    /** True iff the implementation backs onto a hardware keystore (TEE / StrongBox). */
     public val isHardwareBacked: Boolean
 }
 

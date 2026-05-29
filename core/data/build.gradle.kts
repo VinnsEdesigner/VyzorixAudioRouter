@@ -1,32 +1,30 @@
-// Phase 1 Layer 0/1 — `core/common`
+// Phase 1 Layer 1 — `core/data`
 //
-// History:
-//   - PR #5 (Phase 1 Layer 0): introduced as a pure-Kotlin/JVM module containing
-//     constants, enums, models, dispatchers, logging primitives, and the
-//     `KeystoreManager` interface (stub-only — impl deferred per BUILD_ORDER.md).
-//   - PR #7 (Phase 1 Layer 1): migrated to `com.android.library` so that the
-//     Android-bound `KeystoreManager` / `CryptoHelper` / `TokenEncryptor` impls
-//     documented in DOC_7_DATA_SECURITY_AND_PERSISTENCE.md §3 can live at their
-//     canonical paths under `com.vyzorix.audiorouter.common.utils.*`.
+// Per doc/BUILD_ORDER.md Layer 1:
+//   "Room + SQLCipher persistence, plus encrypted DataStore for the C2 secret."
 //
-// The Layer 0 public API surface (constants, enums, models, dispatchers,
-// device-quirk types) stays unchanged across the migration. JVM-only tests
-// (no Android types referenced) keep working on `:testDebugUnitTest`. Tests
-// that touch `KeyStore` / `Context` use Robolectric.
+// Depends only on :core:common (Layer 0). Subsequent layers (audioengine,
+// services, app) will join the dependency graph in later PRs.
 
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
-    namespace = "com.vyzorix.audiorouter.common"
+    namespace = "com.vyzorix.audiorouter.data"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
         consumerProguardFiles("consumer-rules.pro")
+        // KSP / Room schema export — pinned so schema drift is reviewable in PRs.
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+            arg("room.incremental", "true")
+        }
     }
 
     compileOptions {
@@ -44,25 +42,40 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    sourceSets["androidTest"].assets.srcDirs("$projectDir/schemas")
 }
 
 dependencies {
+    implementation(project(":core:common"))
+
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.annotation)
+    implementation(libs.androidx.core.ktx)
+
+    // Room
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    // DataStore Preferences — per doc/DOC_7 §3.9, DeviceSecretStore writes
+    // its sealed blob to a Preferences DataStore container.
+    implementation(libs.androidx.datastore.preferences)
+
+    // SQLCipher — full-DB encryption per ADR-0004.
+    implementation(libs.sqlcipher.android)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.room.testing)
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
 }
 
-// Apply explicit-API mode only to production source sets; tests stay free of
-// the constraint so the existing kotlin.test idioms (`class Foo { @Test fun bar() ... }`)
-// compile without per-member visibility annotations.
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     val isTestTask = name.contains("UnitTest", ignoreCase = true) ||
         name.contains("AndroidTest", ignoreCase = true)

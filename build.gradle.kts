@@ -1,11 +1,19 @@
-// Root project — no plugins applied here. Each module declares its own toolchain.
-// Phase 1 Layer 0 keeps this intentionally bare.
+// Root project — modules declare their own plugins.
+//
+// AGP is referenced (`apply false`) so that buildscript-level configuration is
+// loaded once at the root and each module activates the plugin via its own
+// `plugins { alias(libs.plugins.android.library) }` block.
 plugins {
+    alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.ksp) apply false
     base
 }
 
 tasks.register("checkAllModules") {
     group = "verification"
-    description = "Runs check on every wired-in module (Layer 0: only :core:common)."
+    description = "Runs check on every wired-in module."
     dependsOn(subprojects.map { "${it.path}:check" })
 }
