@@ -150,7 +150,9 @@ Each layer below has: scope, files compiled, files explicitly stubbed-only, what
 
 ---
 
-## Layer 3 — Minimum Viable Route War
+## Layer 3 — Minimum Viable Route War ✅ landed (PR #11)
+
+**Status:** Implementation merged. `:app` + `:core:services` Gradle modules are now in the build graph. The full Layer 3 surface (VoIP anchor + SpeakerForceEngine + AudioModeKeeper + RoutePersistenceDaemon + bootstrap accessibility wiring + BootReceiver) is implemented per the file list below; 36 Robolectric tests in `:core:services` + 1 in `:app` cover the new logic. **On-device acceptance on the Nokia C22 is still pending — see "On-device verification" below; this is THE Phase 1 go/no-go gate.**
 
 **Scope:** **The first layer that physically produces audio on the Nokia C22.** This is the smallest end-to-end slice that proves the route-forcing thesis works. Diagnostics, dashboard, updates, and C2 do not exist yet.
 

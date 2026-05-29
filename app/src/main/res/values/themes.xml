@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Layer-3 bootstrap theme. We deliberately do NOT depend on
+      AppCompat / Material at this layer — the bootstrap activity is a
+      single throwaway screen the user sees once.
+    -->
+    <style name="Theme.Vyzorix.Bootstrap" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar" />
+</resources>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phase 1 Layer 3 — :app/AndroidManifest.xml.
+
+  Permissions trimmed to the bare minimum for the route-war machinery
+  per doc/BUILD_ORDER.md §Layer 3 lines 157–168. Later layers add their
+  own permissions alongside the consumer feature (Layer 4 adds
+  FOREGROUND_SERVICE_MEDIA_PROJECTION + RECORD_AUDIO, Layer 6+ adds
+  INTERNET + ACCESS_NETWORK_STATE, etc.).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Foreground service: required to run a persistent service on A12+. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- A14: must declare the service-type subpermission matching
+         PersistentAudioService's foregroundServiceType in the manifest. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- AudioManager.mode + setSpeakerphoneOn require MODIFY_AUDIO_SETTINGS. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- BootReceiver requires this permission to receive the broadcast. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- A13+ runtime permission for posting the foreground notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".VyzorixApplication"
+        android:label="VyzorixAudioRouter"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:fullBackupContent="false"
+        tools:targetApi="33">
+
+        <!--
+          BootstrapActivity — the single launcher entrypoint. Once
+          accessibility is enabled, LauncherIconHider disables this
+          activity via PackageManager.setComponentEnabledSetting(...).
+        -->
+        <activity
+            android:name=".BootstrapActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Vyzorix.Bootstrap">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          We intentionally re-declare PersistentAudioService here (alongside
+          the merged library-side declaration in :core:services) with the
+          fully-qualified name. AGP de-duplicates identical service entries;
+          this stays as documentation for code reviewers.
+        -->
+
+    </application>
+
+</manifest>

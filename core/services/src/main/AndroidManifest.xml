@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Library-side AndroidManifest for :core:services. This is merged into the
+  consuming app's manifest (`:app`) at build time. Layer 3 surfaces:
+
+    - PersistentAudioService          (the foreground daemon)
+    - BootReceiver                    (RECEIVE_BOOT_COMPLETED restorer)
+    - RouterAccessibilityService      (the headless bootstrap entrypoint)
+
+  No content provider / WSS service yet — those land in Layer 5+ (provider/)
+  and Layer 7 (websocket/), respectively.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+
+        <!--
+          PersistentAudioService — Phase 1 Layer 3 daemon.
+          - foregroundServiceType is mediaPlayback because Layer 3 plays a
+            silent VoIP anchor track to hold the OS in VoIP-mode dominance.
+            (Layer 4 will add mediaProjection once capture is wired.)
+          - exported=false: this service is never started from outside the
+            app's own process. RouterAccessibilityService / BootReceiver
+            start it via explicit Intent.
+        -->
+        <service
+            android:name="com.vyzorix.audiorouter.services.foreground.PersistentAudioService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!--
+          BootReceiver — re-starts the daemon after a device reboot.
+          exported=true is mandatory for RECEIVE_BOOT_COMPLETED to fire.
+        -->
+        <receiver
+            android:name="com.vyzorix.audiorouter.services.foreground.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          RouterAccessibilityService — the bootstrap entrypoint per
+          doc/DOC_2 §2.1. exported=true is required for the system to bind
+          the service after the user toggles it on in Settings.
+        -->
+        <service
+            android:name="com.vyzorix.audiorouter.services.accessibility.RouterAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+    </application>
+
+</manifest>

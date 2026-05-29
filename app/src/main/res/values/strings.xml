@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VyzorixAudioRouter</string>
+    <string name="bootstrap_title">Set up VyzorixAudioRouter</string>
+    <string name="bootstrap_body">Enable the VyzorixAudioRouter accessibility service to begin
+        routing audio through the speaker. After enabling, this icon will be hidden — the daemon
+        will continue running in the background.</string>
+    <string name="bootstrap_open_accessibility_settings">Open Accessibility Settings</string>
+    <string name="bootstrap_dismiss">Done</string>
+</resources>

@@ -4,6 +4,7 @@
 // loaded once at the root and each module activates the plugin via its own
 // `plugins { alias(libs.plugins.android.library) }` block.
 plugins {
+    alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.jvm) apply false
