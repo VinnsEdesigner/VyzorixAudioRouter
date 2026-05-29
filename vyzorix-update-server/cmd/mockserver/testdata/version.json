@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0-mock",
+  "version_code": 1,
+  "apk_filename": "vyzorix-audiorouter-mock.apk",
+  "apk_sha256": "17819e3edfe86177012ca292b5b4c9db3700122f851b9c4bbd2d3dc0ec00ed20",
+  "apk_size_bytes": 9,
+  "release_notes": "Mock release served by cmd/mockserver. Do NOT deploy to a real device."
+}
