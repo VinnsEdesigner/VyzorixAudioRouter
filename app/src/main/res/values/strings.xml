@@ -6,5 +6,8 @@
         routing audio through the speaker. After enabling, this icon will be hidden — the daemon
         will continue running in the background.</string>
     <string name="bootstrap_open_accessibility_settings">Open Accessibility Settings</string>
+    <string name="bootstrap_disable_battery_optimization">Disable battery optimisation</string>
+    <string name="bootstrap_battery_optimization_already_disabled">Battery optimisation already disabled</string>
+    <string name="bootstrap_export_logs">Export logs now</string>
     <string name="bootstrap_dismiss">Done</string>
 </resources>

@@ -18,8 +18,12 @@
 
 package com.vyzorix.audiorouter.services.voip
 
+import com.vyzorix.audiorouter.services.logging.DaemonLogger
 import com.vyzorix.audiorouter.services.managers.AudioRouteManager
+import com.vyzorix.audiorouter.services.oem.NokiaAudioWorkarounds
 import com.vyzorix.audiorouter.services.oem.NokiaC22DeviceProfile
+import com.vyzorix.audiorouter.services.oem.OemEnforcementResult
+import com.vyzorix.audiorouter.services.oem.UnisocPlatformTweaks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -38,6 +42,9 @@ public open class SpeakerForceEngine(
     private val profile: NokiaC22DeviceProfile,
     private val communicationDeviceSelector: CommunicationDeviceSelector =
         CommunicationDeviceSelector(routeManager),
+    private val nokiaWorkarounds: NokiaAudioWorkarounds =
+        NokiaAudioWorkarounds(routeManager, profile),
+    private val unisocTweaks: UnisocPlatformTweaks = UnisocPlatformTweaks(profile),
 ) {
 
     @Volatile
@@ -59,6 +66,16 @@ public open class SpeakerForceEngine(
     public var quietTickCount: Long = 0L
         private set
 
+    /** Number of OEM-workaround reassertions that completed only after retries. */
+    @Volatile
+    public var oemRetryCount: Long = 0L
+        private set
+
+    /** Number of OEM-workaround reassertions that failed every retry. */
+    @Volatile
+    public var oemFailureCount: Long = 0L
+        private set
+
     /** Last reassertion timestamp (`System.nanoTime()` granularity). */
     @Volatile
     public var lastReassertionNanos: Long = 0L
@@ -68,14 +85,17 @@ public open class SpeakerForceEngine(
     public open fun start(): Job = scope.launch {
         // Phase 1 (Escalation per doc/VOIP_ROUTE_FORCE.md §3.2): set the
         // route once eagerly before the loop so the first audio tick has
-        // somewhere to go.
-        routeManager.engageVoipSpeakerRoute(
-            modeSwitchGapMs = profile.modeSwitchSilenceGapMs,
-        )
+        // somewhere to go. We go through the OEM workaround path even on the
+        // first assertion because the Nokia §3 silent-drop bug shows up on
+        // the very first post-boot setSpeakerphoneOn(true) call.
+        applyRouteAssertion(reason = "initial")
         communicationDeviceSelector.assertBuiltinSpeaker()
-        recordReassertion()
 
-        val cadenceMs = profile.routeAssertCadenceMs
+        // SCHED_FIFO might have silently fallen back to SCHED_OTHER; the
+        // UnisocPlatformTweaks helper bumps the cadence down accordingly so
+        // we don't starve the system at the un-elevated priority.
+        val cadenceMs = unisocTweaks.fallbackTickCadenceMs(profile.routeAssertCadenceMs)
+        DaemonLogger.get().info(TAG, "engine.start cadenceMs=$cadenceMs throttled=${cadenceMs != profile.routeAssertCadenceMs}")
         while (isActive) {
             if (paused) {
                 yield()
@@ -127,15 +147,38 @@ public open class SpeakerForceEngine(
 
     /** Internal reassertion path — used by both tick() and forceReassert(). */
     private fun forceReassert() {
-        routeManager.engageVoipSpeakerRoute(
-            modeSwitchGapMs = profile.modeSwitchSilenceGapMs,
-        )
+        applyRouteAssertion(reason = "drift")
         communicationDeviceSelector.assertBuiltinSpeaker()
+    }
+
+    /** Run the route assertion through the OEM workaround path. */
+    private fun applyRouteAssertion(reason: String) {
+        when (val outcome = nokiaWorkarounds.assertVoipSpeakerRoute()) {
+            OemEnforcementResult.APPLIED_DIRECTLY -> Unit
+            OemEnforcementResult.APPLIED_AFTER_RETRY -> {
+                oemRetryCount++
+                DaemonLogger.get().info(
+                    TAG,
+                    "oem.retry.success reason=$reason retries=$oemRetryCount outcome=$outcome",
+                )
+            }
+            OemEnforcementResult.FAILED -> {
+                oemFailureCount++
+                DaemonLogger.get().warn(
+                    TAG,
+                    "oem.retry.failed reason=$reason failures=$oemFailureCount outcome=$outcome",
+                )
+            }
+        }
         recordReassertion()
     }
 
     private fun recordReassertion() {
         reassertionCount++
         lastReassertionNanos = System.nanoTime()
+    }
+
+    private companion object {
+        const val TAG: String = "SpeakerForceEngine"
     }
 }

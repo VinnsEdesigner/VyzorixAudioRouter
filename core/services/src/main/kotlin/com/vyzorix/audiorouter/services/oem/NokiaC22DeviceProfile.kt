@@ -11,8 +11,10 @@ package com.vyzorix.audiorouter.services.oem
 
 import android.os.Build
 import com.vyzorix.audiorouter.common.device.AudioModeQuirk
+import com.vyzorix.audiorouter.common.device.BackgroundRestrictionLevel
 import com.vyzorix.audiorouter.common.device.DeviceQuirkProfile
 import com.vyzorix.audiorouter.common.device.DeviceQuirkRegistry
+import com.vyzorix.audiorouter.common.device.SchedulerBehavior
 
 /**
  * Services-side façade over [DeviceQuirkProfile].
@@ -64,6 +66,22 @@ public class NokiaC22DeviceProfile internal constructor(
     /** Whether the device's Bluetooth SCO toggle is too flaky to use. */
     public val isBluetoothScoUnreliable: Boolean
         get() = AudioModeQuirk.UNRELIABLE_BLUETOOTH_SCO in profile.audioModeQuirks
+
+    /**
+     * Whether the kernel silently downgrades SCHED_FIFO requests. When true,
+     * [UnisocPlatformTweaks] throttles the SpeakerForceEngine cadence so the
+     * SCHED_OTHER thread doesn't starve the rest of the system.
+     */
+    public val requiresSchedFifoFallbackHandling: Boolean
+        get() = profile.schedulerBehavior == SchedulerBehavior.SILENT_FALLBACK
+
+    /**
+     * Whether the OEM kills foreground services aggressively (Evenwell, Xiaomi
+     * MIUI, etc.). When true, the daemon must acquire a `PARTIAL_WAKE_LOCK`
+     * and prompt the user to whitelist battery optimisation.
+     */
+    public val hasAggressiveBackgroundRestrictions: Boolean
+        get() = profile.backgroundRestrictionLevel == BackgroundRestrictionLevel.AGGRESSIVE
 
     /** Direct access to the underlying [DeviceQuirkProfile] for callers that need every knob. */
     public val rawProfile: DeviceQuirkProfile

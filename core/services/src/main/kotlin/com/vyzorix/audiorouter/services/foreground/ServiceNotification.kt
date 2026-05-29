@@ -15,6 +15,7 @@ package com.vyzorix.audiorouter.services.foreground
 
 import android.app.Notification
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -37,10 +38,12 @@ public object ServiceNotification {
     ): Notification {
         NotificationChannelManager.ensureChannels(context)
         val tapTarget = appSettingsPendingIntent(context)
+        val exportAction = buildExportLogsAction(context)
         return NotificationHelper.buildDaemonNotification(
             context = context,
             contentIntent = tapTarget,
             contentText = statusText,
+            actions = listOf(exportAction),
         )
     }
 
@@ -60,5 +63,30 @@ public object ServiceNotification {
         )
     }
 
+    /**
+     * Build the "Export logs" notification action — wired to
+     * [LogExportReceiver]. Without ADB this is the user's only way to retrieve
+     * diagnostics from a soak test.
+     */
+    public fun buildExportLogsAction(context: Context): Notification.Action {
+        val intent = Intent(LogExportReceiver.ACTION_EXPORT_LOGS).apply {
+            // Explicit component target so the broadcast lands even when the
+            // OS restricts background implicit broadcasts (A8+).
+            component = ComponentName(context, LogExportReceiver::class.java)
+            `package` = context.packageName
+        }
+        val pending = IntentUtils.broadcastPendingIntent(
+            context = context,
+            requestCode = REQUEST_CODE_EXPORT_LOGS,
+            intent = intent,
+        )
+        return Notification.Action.Builder(
+            android.R.drawable.stat_sys_download_done,
+            "Export logs",
+            pending,
+        ).build()
+    }
+
     private const val REQUEST_CODE_APP_SETTINGS: Int = 0x42
+    private const val REQUEST_CODE_EXPORT_LOGS: Int = 0x43
 }

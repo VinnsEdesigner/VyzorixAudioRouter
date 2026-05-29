@@ -44,6 +44,22 @@
         </receiver>
 
         <!--
+          LogExportReceiver — handles the daemon notification's "Export logs"
+          action button. Without ADB, this is the only way the user retrieves
+          the FileLogger bundle for off-device analysis. exported=false because
+          the broadcast is always sent via an explicit ComponentName from our
+          own ServiceNotification.
+        -->
+        <receiver
+            android:name="com.vyzorix.audiorouter.services.foreground.LogExportReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vyzorix.audiorouter.action.EXPORT_LOGS" />
+            </intent-filter>
+        </receiver>
+
+        <!--
           RouterAccessibilityService — the bootstrap entrypoint per
           doc/DOC_2 §2.1. exported=true is required for the system to bind
           the service after the user toggles it on in Settings.
