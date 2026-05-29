@@ -1,4 +1,6 @@
-# MEDIA_PROJECTION_FLOW.md — Universal Audio Interception
+# MEDIA_PROJECTION_FLOW.md — Universal Audio Interception (deep-dive of DOC_3)
+
+> **This is a deep-dive of [`DOC_3_AUDIO_PIPELINE_AND_VOIP_EXEMPTIONS.md`](./DOC_3_AUDIO_PIPELINE_AND_VOIP_EXEMPTIONS.md).** DOC_3 is the canonical architectural spec for the audio pipeline; this document covers the MediaProjection-specific capture chain, idle pause, and projection death handling in implementation-level detail. If anything here contradicts DOC_3, DOC_3 wins and this document should be updated.
 
 ## Objective
 
@@ -37,7 +39,7 @@ We treat the `MediaProjection` token as a **Key** to unlock the system audio mix
 
 ### Phase 1: Initialization (The "Key")
 
-1. `ProjectionSessionManager` requests the user token.
+1. `MediaProjectionSession` requests the user token.
 2. Once granted, it calls `registerCallback()` to detect if the system revokes it (e.g., user stops casting).
 3. **Optimization:** We configure the capture to **Audio Only**. We do not create a virtual display for video, saving massive battery and CPU.
 
@@ -93,7 +95,7 @@ The idle-pause loop is owned by a dedicated class: `core/services/capture/IdleCa
 
 Projection death recovery is owned by a dedicated class: `core/services/capture/ProjectionDeathHandler.kt`. It is **distinct** from `ProjectionTokenManager.kt` — the manager tracks the token's general lifecycle (grant / revoke / persist), while the death handler is a single-purpose listener for the specific `MediaProjection.Callback.onStop()` callback that fires when the system involuntarily tears down the session.
 
-- **Registration:** `MediaProjectionCaptureSession` registers `ProjectionDeathHandler` as a `MediaProjection.Callback` on the active projection during T+10s of the startup sequence (see `SYSTEM_MAP.md` §2).
+- **Registration:** `MediaProjectionSession` registers `ProjectionDeathHandler` as a `MediaProjection.Callback` on the active projection during T+10s of the startup sequence (see `SYSTEM_MAP.md` §2).
 - **Trigger:** Android's `MediaProjection.Callback.onStop()` fires. On the Nokia C22 this is most commonly caused by:
   - A13 background-restriction enforcement during Doze mode.
   - Memory pressure-driven `oom_score_adj` recalculation killing the projection process.

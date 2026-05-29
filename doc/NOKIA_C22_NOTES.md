@@ -11,6 +11,7 @@ Cross-references:
 - `MEDIA_PROJECTION_FLOW.md` §Battery & Soft Reboot Mitigation — how `IdleCaptureController` and thermal throttling address the C22-specific energy budget.
 - `DOC_7_DATA_SECURITY_AND_PERSISTENCE.md` §3.1 — software fallback in `KeystoreManager` for the C22's unreliable TEE.
 - `BUILD_ORDER.md` — every layer references on-device verification on the C22 as its acceptance gate.
+- `DEVICE_QUIRK_PROFILES.md` + ADR-0008 — the runtime `DeviceQuirkProfile` system that this document populates. **Every C22-specific value mentioned below should be a field on `NokiaC22Profile` in `core/common/device/profiles/NokiaC22Profile.kt`, not a hardcoded `if (isNokiaC22)` check elsewhere in the codebase.**
 
 ---
 
@@ -87,7 +88,7 @@ log_info("SCHED_FIFO confirmed at priority %d", actual_sp.sched_priority);
 return PRIORITY_RESULT_REAL_TIME;
 ```
 
-The Kotlin/JNI side MUST surface `PRIORITY_RESULT_SILENT_FALLBACK` distinctly from `PRIORITY_RESULT_REAL_TIME`. `DaemonStatusProvider` reports the result so the dashboard can show "Audio: real-time" vs "Audio: best-effort (Unisoc fallback)" — the C22 will commonly show the latter and that is acceptable, BUT only because we know about it.
+The Kotlin/JNI side MUST surface `PRIORITY_RESULT_SILENT_FALLBACK` distinctly from `PRIORITY_RESULT_REAL_TIME`. `DaemonStatusAggregator` reports the result so the dashboard can show "Audio: real-time" vs "Audio: best-effort (Unisoc fallback)" — the C22 will commonly show the latter and that is acceptable, BUT only because we know about it.
 
 ### 2.4 Compensating for Silent Fallback
 
@@ -95,7 +96,7 @@ When the read-back check returns `PRIORITY_RESULT_SILENT_FALLBACK` we adapt rath
 
 1. `LatencyOptimizer.kt` increases the capture chunk size (256 → 512 frames) to give the non-real-time thread more headroom per scheduling quantum.
 2. `UnderrunRecovery.kt` lowers its underrun-trigger threshold so it pre-emptively grows the buffer before audible glitches.
-3. `DaemonStatusProvider` reports the degraded mode so the dashboard shows the user what they're getting.
+3. `DaemonStatusAggregator` reports the degraded mode so the dashboard shows the user what they're getting.
 4. `UnisocPlatformTweaks.kt` applies any additional SoC-specific tunables (timing gaps between ALSA ioctl calls — empirically the Unisoc audio HAL benefits from ~2ms gaps; see comment in `VyzorixAudioRouter_RepoTree.md` line ~580).
 
 The combination of these compensations is what keeps the C22 audio glitch-free in practice even though we never actually get SCHED_FIFO.
@@ -126,7 +127,7 @@ The closed-source Unisoc audio_hal has been observed to deadlock if ALSA ioctls 
 ## 4. Memory & OOM Notes
 
 - The 2GB RAM budget plus aggressive A13 OOM-killer means our foreground service must stay genuinely foreground (i.e., post its notification within the 5s window required by `startForeground`). `NotificationCompatBridge.kt` handles A13-specific notification flag requirements.
-- `MemoryPressureCoordinator` and `RuntimeMemoryMonitor` use signals from `ProcessHealthMonitor` to detect oncoming memory pressure and pre-emptively drop non-essential caches (mainly the rolling diagnostic log buffer in `RollingLogWriter`).
+- `MemoryPressureSignal` (Layer B per ADR-0007) and `RuntimeMemoryMonitor` detect oncoming memory pressure and pre-emptively drop non-essential caches (mainly the rolling diagnostic log buffer in `RollingLogWriter`). The former `ProcessHealthMonitor`'s memory-tracking duty is now part of `MemoryPressureSignal`.
 - We do NOT use `largeHeap=true` in the manifest. On 2GB devices it does more harm than good (it makes the GC do more work without giving us materially more usable memory).
 
 ---
@@ -151,7 +152,7 @@ The Unisoc TEE on the SC9863A is unreliable for hardware-backed Keystore operati
 
 1. Always wrapping Keystore operations in try/catch.
 2. On any of the failure signatures above, falling back to a software-derived key (HKDF over install-time UUID + a static salt). The fallback path is documented in `DOC_7_DATA_SECURITY_AND_PERSISTENCE.md` §3.1.
-3. Surfacing the fallback state to `DaemonStatusProvider` so the dashboard shows "Crypto: hardware" vs "Crypto: software" — both states are operational; the software-fallback state is not a failure.
+3. Surfacing the fallback state to `DaemonStatusAggregator` so the dashboard shows "Crypto: hardware" vs "Crypto: software" — both states are operational; the software-fallback state is not a failure.
 
 This fallback strategy applies to BOTH downstream consumers:
 - The SQLCipher master passcode wrapping (database can still be encrypted-at-rest using the software-derived key).

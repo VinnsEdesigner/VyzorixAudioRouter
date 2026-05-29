@@ -1,4 +1,6 @@
-# VOIP_ROUTE_FORCE.md — The "Route War" Strategy
+# VOIP_ROUTE_FORCE.md — The "Route War" Strategy (deep-dive of DOC_3)
+
+> **This is a deep-dive of [`DOC_3_AUDIO_PIPELINE_AND_VOIP_EXEMPTIONS.md`](./DOC_3_AUDIO_PIPELINE_AND_VOIP_EXEMPTIONS.md).** DOC_3 is the canonical architectural spec; this document focuses on the `MODE_IN_COMMUNICATION` exemption path and the failure modes specific to the C22's phantom-headset lock.
 
 ## Objective
 

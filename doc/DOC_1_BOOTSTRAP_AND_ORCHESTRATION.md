@@ -73,7 +73,7 @@ app/src/main/kotlin/com/vyzorix/audiorouter/
 ### 2.2 `VyzorixAppInitializer.kt`
 *   **Path**: `app/src/main/kotlin/com/vyzorix/audiorouter/VyzorixAppInitializer.kt`
 *   **Architectural Role**: Coordinates sequential component setups. It configures notification channels, database migrations, and cryptographic keystore keys before background daemon lifecycles start.
-*   **Core APIs & State Dependencies**: Relies on `NotificationChannelManager`, `DaemonDatabase`, and `KeystoreManager`.
+*   **Core APIs & State Dependencies**: Relies on `NotificationChannelManager`, `AppDatabase`, and `KeystoreManager`.
 *   **Failure Boundaries**: If the local database is corrupted, it catches the exception and falls back to a clean database rebuild to prevent startup crashes.
 
 ### 2.3 `BuildInfo.kt`
@@ -198,7 +198,7 @@ The `managers` submodule coordinates individual subsystems (routing, capture, an
 ```text
 core/services/src/main/kotlin/com/vyzorix/audiorouter/services/managers/
 ├── AudioRouteManager.kt
-├── ProjectionSessionManager.kt
+├── MediaProjectionSession.kt
 ├── DaemonLifecycleManager.kt
 ├── SpeakerForceManager.kt
 └── RecoveryOrchestrator.kt
@@ -208,8 +208,8 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/managers/
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/managers/AudioRouteManager.kt`
 *   **Architectural Role**: Binds the audio route. It acts as the central interface for executing speakerphone overrides, monitoring active hardware routes, and logging device transitions.
 
-### 5.2 `ProjectionSessionManager.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/managers/ProjectionSessionManager.kt`
+### 5.2 `MediaProjectionSession.kt`
+*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/managers/MediaProjectionSession.kt`
 *   **Architectural Role**: Binds `MediaProjection` lifecycles. It monitors token revocation callbacks and notifies the capture engines to halt or re-request tokens.
 
 ### 5.3 `DaemonLifecycleManager.kt`
@@ -240,8 +240,11 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/foreground/
 ├── ServiceNotification.kt
 ├── ServiceNotificationDashboard.kt
 ├── SilentKeepAliveService.kt
-├── ServiceHeartbeat.kt
-├── ServiceRecoveryManager.kt
+# NOTE: ServiceHeartbeat.kt folded into LivenessProbe (ADR-0007).
+├── LivenessProbe.kt
+├── PipelineHealthChecker.kt
+├── RecoveryCoordinator.kt
+├── signals/ (Layer B — see ADR-0007)
 ├── BootReceiver.kt
 └── actions/
     ├── NotificationActionReceiver.kt
@@ -260,18 +263,17 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/foreground/
 
 ### 6.3 `ServiceNotificationDashboard.kt`
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/foreground/ServiceNotificationDashboard.kt`
-*   **Architectural Role**: Updates the dashboard UI. It collects telemetry data from `DaemonStatusProvider` every 10 seconds and pushes layout modifications to the system status bar via `RemoteViews`.
+*   **Architectural Role**: Updates the dashboard UI. It collects telemetry data from `DaemonStatusAggregator` every 10 seconds and pushes layout modifications to the system status bar via `RemoteViews`.
 
 ### 6.4 `SilentKeepAliveService.kt`
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/foreground/SilentKeepAliveService.kt`
 *   **Architectural Role**: Dual-service backup. It runs as a low-priority bound service to maintain binder references, preventing the OS from killing the main process when resources are low.
 
-### 6.5 `ServiceHeartbeat.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/foreground/ServiceHeartbeat.kt`
-*   **Architectural Role**: Internal watchdog. It pings active threads at 5-second intervals. If a thread stalls or locks up, it triggers the recovery managers.
+### 6.5 ~~`ServiceHeartbeat.kt`~~ — folded into `LivenessProbe.kt` (ADR-0007)
+*   **Architectural Role**: Heartbeat *is* the mechanism the liveness probe uses internally to ping active threads at 5-second intervals. The old `ServiceHeartbeat.kt` is no longer a separate class — see `LivenessProbe.kt` instead, which is the Layer B signal that answers "is the daemon process responsive?" Liveness ping output flows to `DaemonStatusAggregator`; recovery decisions belong to `RecoveryCoordinator` (Layer A).
 
-### 6.6 `ServiceRecoveryManager.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/foreground/ServiceRecoveryManager.kt`
+### 6.6 `RecoveryCoordinator.kt`
+*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/foreground/RecoveryCoordinator.kt`
 *   **Architectural Role**: Re-binds crashed services. It intercepts crash loops and executes the `StartupBackoffScheduler` to delay re-registrations safely.
 
 ### 6.7 `BootReceiver.kt`
@@ -389,7 +391,7 @@ Coordinates IPC bindings, command execution, and response routing back to the co
 core/services/src/main/kotlin/com/vyzorix/audiorouter/services/ipc/
 ├── AudioRouterBinder.kt
 ├── ServiceConnectionManager.kt
-├── DaemonCommandDispatcher.kt
+├── RemoteCommandDispatcher.kt
 ├── RemoteCommandExecutor.kt
 └── RemoteCommandResultDispatcher.kt
 ```
@@ -402,8 +404,8 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/ipc/
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/ipc/ServiceConnectionManager.kt`
 *   **Architectural Role**: Binds IPC connections. It manages service binding, processes dead-object exceptions, and re-binds failed connections.
 
-### 10.3 `DaemonCommandDispatcher.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/ipc/DaemonCommandDispatcher.kt`
+### 10.3 `RemoteCommandDispatcher.kt`
+*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/ipc/RemoteCommandDispatcher.kt`
 *   **Architectural Role**: Central command dispatcher. It routes received commands to their target modules (e.g., forwarding "FORCE_SPEAKER" to the routing engine).
 
 ### 10.4 `RemoteCommandExecutor.kt`

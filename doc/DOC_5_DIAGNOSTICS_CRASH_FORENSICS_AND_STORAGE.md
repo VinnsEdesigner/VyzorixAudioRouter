@@ -14,8 +14,8 @@ The following mapping outlines the chronological pipeline tracking app launches,
    ├── AppLaunchObserver (UsageStats MOVE_TO_FOREGROUND)
    ├── WindowTransitionTracker (TYPE_WINDOWS_CHANGED <500ms)
    ├── PackageStateObserver (Tracks fresh app installs)
-   ├── SoftRebootPredictor (SystemClock.uptimeMillis() checks)
-   └── RendererFailureDetector (Detects GPU visual stasis >5s)
+   ├── SoftRebootTracker (SystemClock.uptimeMillis() checks; forensic instrument per ADR-0002 — does NOT trigger recovery)
+   └── PipelineHealthChecker (audio-pipeline observable proxy for GPU visual stasis; absorbs former RendererFailureDetector)
          │
          ▼ (Pushed as serialized, type-safe events)
    LogStreamCollector (In-memory structured logger aggregator)
@@ -62,7 +62,7 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/crash/
 
 ### 2.3 `SoftRebootTracker.kt`
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/crash/SoftRebootTracker.kt`
-*   **Architectural Role**: Keeps a database record of recent system restarts. It parses `SoftRebootPredictor` events to maintain a rolling queue of the last 5 reboots, helping identify system instability patterns.
+*   **Architectural Role**: Keeps a database record of recent system restarts. It is the forensic measurement instrument (ADR-0002) — it records that a reboot happened. Reboot-*pattern* matching (predicting that one is coming) is a recovery policy that lives in `RecoveryCoordinator` (Layer A, ADR-0007), not here. SoftRebootTracker is the data source the policy reads from.
 
 ### 2.4 `LastKnownStateDumper.kt`
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/crash/LastKnownStateDumper.kt`
@@ -86,13 +86,14 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/diagnostics/
 ├── RuntimeTraceAssembler.kt
 ├── DiagnosticCompression.kt
 ├── EventCorrelationEngine.kt
-├── SystemHealthScorer.kt
+# NOTE: SystemHealthScorer.kt removed — folded into core/services/foreground/DaemonStatusAggregator (ADR-0007).
 └── system/
     ├── AppLaunchObserver.kt
     ├── WindowTransitionTracker.kt
-    ├── PackageStateObserver.kt
-    ├── SoftRebootPredictor.kt
-    └── RendererFailureDetector.kt
+    └── PackageStateObserver.kt
+    # NOTE: SoftRebootPredictor.kt removed — policy folded into RecoveryCoordinator (ADR-0007).
+    # NOTE: RendererFailureDetector.kt removed — folded into PipelineHealthChecker.
+    #       SoftRebootTracker.kt is in services/crash/, not here (it is a measurement instrument, not a signal).
 ```
 
 ### 3.1 Core Telemetry collectors
@@ -137,9 +138,8 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/diagnostics/
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/diagnostics/EventCorrelationEngine.kt`
 *   **Architectural Role**: Matches recent app launches against system crashes to identify if specific packages trigger framework instabilities.
 
-#### 3.1.11 `SystemHealthScorer.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/diagnostics/SystemHealthScorer.kt`
-*   **Architectural Role**: Computes system stability index. It calculates a risk score (0-100) based on crash logs and notifies the controllers to scale back features if risk increases.
+#### 3.1.11 ~~`SystemHealthScorer.kt`~~ — folded into `DaemonStatusAggregator` (ADR-0007)
+*   **Architectural Role**: The 0–100 risk score IS the aggregate health. It is now computed inside `DaemonStatusAggregator` as part of producing the unified `DaemonStatus` model. No separate scorer class. See `core/services/foreground/DaemonStatusAggregator.kt`.
 
 ---
 
@@ -157,13 +157,11 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/diagnostics/
 *   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/diagnostics/system/PackageStateObserver.kt`
 *   **Architectural Role**: Differentiates between fresh app installs and stable system packages to isolate new software sources of instability.
 
-#### 3.2.4 `SoftRebootPredictor.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/diagnostics/system/SoftRebootPredictor.kt`
-*   **Architectural Role**: Analyzes system clock offsets. It compares local clock intervals with hardware timers; if a drift occurs, it flags system instability.
+#### 3.2.4 ~~`SoftRebootPredictor.kt`~~ — folded into `RecoveryCoordinator` soft-reboot risk policy (ADR-0007)
+*   **Architectural Role**: "Predicting" a reboot is a recovery policy, not a forensic signal. The pattern-matching logic lives in `RecoveryCoordinator` (Layer A). The data it reads from is `SoftRebootTracker` (services/crash/). Clock-offset analysis from the old predictor is now a private helper inside the coordinator.
 
-#### 3.2.5 `RendererFailureDetector.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/diagnostics/system/RendererFailureDetector.kt`
-*   **Architectural Role**: Detects GPU freezes. It monitors accessibility events; if a foreground app remains active but emits no screen changes for more than 5 seconds, it flags a renderer freeze.
+#### 3.2.5 ~~`RendererFailureDetector.kt`~~ — folded into `PipelineHealthChecker` (ADR-0007)
+*   **Architectural Role**: A surfaceflinger / GPU stasis on this device manifests as audio pipeline starvation (AudioRecord reads stall, AudioTrack writes stutter). Rather than maintain a separate UI-stasis detector, we collapse this into `PipelineHealthChecker`, which already monitors the audio loops and is the Layer B signal that the dashboard surfaces.
 
 ---
 

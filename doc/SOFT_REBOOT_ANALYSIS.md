@@ -1,4 +1,6 @@
-# SOFT_REBOOT_ANALYSIS.md — Diagnostic Black Box Strategy
+# SOFT_REBOOT_ANALYSIS.md — Diagnostic Black Box Strategy (deep-dive of DOC_5)
+
+> **This is a deep-dive of [`DOC_5_DIAGNOSTICS_CRASH_FORENSICS_AND_STORAGE.md`](./DOC_5_DIAGNOSTICS_CRASH_FORENSICS_AND_STORAGE.md).** DOC_5 is the canonical spec for the observer fleet and forensic stack; this document focuses on the **C22-specific soft-reboot failure model** and explains **why the observer fleet exists** (per ADR-0002).
 
 ## Objective
 
@@ -28,6 +30,62 @@ Since we cannot read system internals, we treat the device as a black box and in
 
 ---
 
+## Why the Observer Fleet Exists (Read This Before Simplifying)
+
+This section was added in response to a reasonable concern: the daemon has fifteen-plus observers (`AppLaunchObserver`, `PackageChangeReceiver`, `RuntimeEventTimeline`, `RoutingLogCollector`, `LogStreamCollector`, `LastKnownStateDumper`, `WindowTransitionTracker`, `SoftRebootTracker`, `MemoryPressureSignal`, `DeviceThermalMonitor`, `CrashTraceStore`, `RuntimeTraceAssembler`, `EventCorrelationEngine`, `PipelineHealthChecker` (which now absorbs the former `RendererFailureDetector` duty), and a few more), plus a diagnostic compression / log bundling stack. Reading the codebase cold, this looks like over-engineering.
+
+**It is not over-engineering. It is a measurement instrument.**
+
+### What we know about the bug
+
+- The C22 (Unisoc SC9863A, A13 stock) exhibits soft-reboots most reliably **when launching new native apps cold** — when an app process is forked and `Application.onCreate()` runs for the first time in that process.
+- Soft-reboots do NOT happen at a steady rate from the daemon's own load. A daemon idling in the background for hours does not trigger them.
+- The trigger appears to be the **system reaping memory + an in-flight cold-start IPC race**, but this is a hypothesis, not a known fact.
+
+### What we do NOT know
+
+- **Which** native apps reliably trigger it.
+- **What system state** (memory level, thermal state, ongoing IPC, projection state, audio mode) makes a launch dangerous vs safe.
+- **What the specific failure mechanism is** — a binder transaction failure, a gralloc allocation failure, a zygote fork crash, a surfaceflinger crash, or something else entirely.
+- **Whether the bug is reproducible at all** under controlled conditions. We cannot summon it on demand.
+
+### What the observers are for
+
+Each observer is recording a specific signal that **might** correlate with the trigger. We do not yet know which signal is the one that matters. Once we accumulate enough soft-reboot events with correlated state, we can statistically isolate the trigger.
+
+| Observer | Recorded signal | Hypothesis it tests |
+|----------|------------------|--------------------|
+| `AppLaunchObserver` | Native app launches + timestamps | The trigger correlates with which app launched |
+| `PackageChangeReceiver` | Install / update / uninstall events | Updates often produce cold starts |
+| `WindowTransitionTracker` | UI window changes via accessibility | Cold starts are often window changes |
+| `RuntimeEventTimeline` | Unified time-ordered event stream | Lets us replay the seconds before a crash |
+| `LogStreamCollector` | logcat snapshots around events | System-level evidence |
+| `RoutingLogCollector` | Audio routing changes | The codec bug interacts with policy changes |
+| `MemoryPressureSignal` | Memory pressure signals (Layer B health signal, ADR-0007) | Low-memory reaping is one hypothesis |
+| `DeviceThermalMonitor` | SoC temperature | Thermal events correlate with system stress |
+| `PipelineHealthChecker` (absorbs former `RendererFailureDetector`) | UI surface state failures via audio pipeline starvation | A surfaceflinger crash is one hypothesis; manifests as audio pipeline starvation |
+| `LastKnownStateDumper` | State snapshot on shutdown | Survives the soft-reboot via on-disk persistence |
+| `SoftRebootTracker` | "We just rebooted" detection | Anchors the event in time |
+| `CrashTraceStore` + `RuntimeTraceAssembler` | Forensic bundle packaging | Output stage of the instrument |
+
+The diagnostic compression / rolling log / bundle-and-zip layer (`DiagnosticCompression`, `RollingLogWriter`) is **not redundant defense**; it is the output stage of the measurement instrument. It packages the forensic state so it survives the reboot and is available off-device for analysis.
+
+### Why we cannot defer the instrumentation
+
+If we ship Layer 3 (basic audio path) without observers and then hit a soft-reboot, we have nothing to debug with. Tombstones, kernel logs, and dmesg are inaccessible to a non-root app on A13. The instrument must be in place **before** the bug fires; otherwise the event passes through unrecorded.
+
+### Reader guidance
+
+If you are reading the codebase and considering simplifying the observer fleet:
+
+1. Ask: **which observer is recording which forensic signal?** If you cannot answer that for a given observer, you do not yet understand what would be lost by removing it.
+2. Observers can be **batched, sampled, or moved to lower-priority dispatchers** to reduce cost — they cannot be **deleted** until the soft-reboot trigger is positively identified and we ship a focused mitigation.
+3. If we ever do identify the trigger, this section should be updated and the observers it makes obsolete should be retired explicitly, with an ADR.
+
+This is the rationale captured in **ADR-0002 — The observer fleet is a measurement instrument**.
+
+---
+
 ## Diagnostic Architecture
 
 ### Observers (Passive Monitoring)
@@ -37,8 +95,9 @@ Since we cannot read system internals, we treat the device as a black box and in
 | AppLaunchObserver | Detects new app launches | UsageStatsManager MOVE_TO_FOREGROUND |
 | WindowTransitionTracker | Watches UI state changes | AccessibilityEvent TYPE_WINDOWS_CHANGED |
 | PackageStateObserver | Differentiates fresh vs known apps | Local isFirstRun tracking |
-| SoftRebootPredictor | Identifies reboot patterns | SystemClock.uptimeMillis() monitoring |
-| RendererFailureDetector | Detects UI thread deadlocks | Accessibility event timing gaps |
+| SoftRebootTracker | Identifies that a reboot just happened (forensic, ADR-0002) | SystemClock.uptimeMillis() monitoring |
+| RecoveryCoordinator (risk policy) | Identifies *patterns* that *predict* a reboot | Pattern-matches against historical SoftRebootTracker records |
+| PipelineHealthChecker | Detects UI thread deadlocks via audio starvation | Audio read/write loop timing gaps |
 
 ### Recorders (Data Persistence)
 
@@ -136,7 +195,7 @@ Classification: System Hang / Pre-Reboot
 
 ### Crash Signature Matching
 
-The SoftRebootPredictor maintains a database of "Crash Signatures" — patterns that consistently precede a reboot:
+The `RecoveryCoordinator`'s soft-reboot risk policy (which absorbed the former `SoftRebootPredictor` class) maintains a database of "Crash Signatures" — patterns that consistently precede a reboot. The signatures themselves are stored by `SoftRebootTracker` (the forensic instrument); the *policy* that decides what to do about them lives in the coordinator (Layer A):
 
 | Signature | Pattern | Confidence |
 |-----------|---------|------------|

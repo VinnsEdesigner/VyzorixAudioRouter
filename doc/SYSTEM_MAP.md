@@ -115,7 +115,7 @@ T+2s    ┌───────────────────────
         │     - Creates "daemon_primary" (IMPORTANCE_LOW)      │
         │     - Creates "diagnostics" (IMPORTANCE_MIN)         │
         │     - Creates "updates" (IMPORTANCE_DEFAULT)         │
-        │  2. DaemonDatabase.getInstance() + Migrations        │
+        │  2. AppDatabase.getInstance() + Migrations        │
         │  3. KeystoreManager.initialize()                     │
         │  4. AppConfig.load()                                 │
         │  5. PermissionAutoGranter.requestAll()               │
@@ -185,7 +185,7 @@ T+7s    ┌───────────────────────
                                    ▼
 T+8s    ┌─────────────────────────────────────────────────────┐
         │  CAPTURE PIPELINE: MediaProjection Active            │
-        │  1. MediaProjectionCaptureSession.open()             │
+        │  1. MediaProjectionSession.open()             │
         │     - Creates AudioRecord with projection token      │
         │  2. PlaybackCaptureEngine.start()                    │
         │     - Begins reading bytes into AudioBufferPool      │
@@ -197,54 +197,70 @@ T+8s    ┌───────────────────────
         └──────────────────────────┬──────────────────────────┘
                                    │
                                    ▼
-T+9s    ┌─────────────────────────────────────────────────────┐
-        │  MONITORING SYSTEMS: All Observers Active            │
+T+9s    ┌────────────────────────────────────────────────────┐
+        │  MONITORING SYSTEMS: Observers + Forensic Tools      │
         │  1. AppLaunchObserver.register() (UsageStatsManager) │
         │  2. WindowTransitionTracker.register() (Accessibility│
         │  3. PackageStateObserver.loadFirstRunList()          │
-        │  4. SoftRebootPredictor.startUptimeMonitoring()      │
-        │  5. RendererFailureDetector.startStasisWatch()       │
-        │  6. DeviceThermalMonitor.startPolling()              │
-        │  7. ProcessHealthMonitor.startHeartbeat()            │
-        │  8. NetworkStateMonitor.register() (for updates)     │
+        │  4. SoftRebootTracker.start()                        │
+        │     - Forensic instrument (ADR-0002); detects we     │
+        │       just rebooted; NOT a health signal             │
+        │  5. DeviceThermalMonitor.startPolling()              │
+        │  6. NetworkStateMonitor.register() (for updates)     │
         └──────────────────────────┬──────────────────────────┘
                                    │
                                    ▼
 T+10s   ┌─────────────────────────────────────────────────────┐
-        │  WATCHDOG & STABILITY: Safety Nets Active            │
-        │  1. DaemonWatchdog.start()                           │
-        │     - Broad daemon health check every 5s             │
-        │     - Verifies capture loop, playback loop, route    │
-        │       state, WS heartbeat across all subsystems      │
-        │     - Calls ServiceRecoveryManager on timeout        │
-        │     - Distinct from ServiceHeartbeat (thread-only)   │
+        │  THREE-LAYER HEALTH: Signals → Aggregator → Coord.   │
+        │  (ADR-0007 — the only entity that issues recovery   │
+        │   actions is the RecoveryCoordinator at the bottom) │
+        │                                                      │
+        │  Layer B — signal sources (started first):          │
+        │  1. LivenessProbe.start()                            │
+        │     - 5s ping to all daemon threads                  │
+        │     - Emits SignalValue, no recovery action          │
         │  2. PipelineHealthChecker.monitor()                  │
-        │     - Audio-specific: AudioRecord read loop and      │
-        │       AudioTrack write loop only                     │
-        │     - Reports pipeline health to DaemonStatusProvider│
-        │     - Distinct from DaemonWatchdog (broader health)  │
-        │  3. CrashLoopProtector.enable()                      │
-        │     - Tracks restart count (resets after 10min)      │
-        │  4. LastKnownStateDumper.start()                     │
-        │     - Writes heartbeat every 10s                     │
-        │  5. UpdateChecker.schedule()                         │
-        │     - First check in 6 hours (configurable)          │
-        │  6. IdleCaptureController.start()                    │
-        │     - Monitors silence >30s -> pauses native PCM     │
-        │       pipeline (~60% CPU reduction); keeps           │
-        │       AudioTrack open for VoIP mode; resumes on      │
-        │       audio detection                                │
-        │  7. ProjectionDeathHandler.register()                │
-        │     - Listens for MediaProjection onStop() death     │
-        │       callback (distinct from ProjectionTokenManager)│
-        │     - On death: logs CrashTraceStore -> triggers     │
-        │       UiRecoveryDaemon to re-launch trampoline       │
+        │     - AudioRecord read loop + AudioTrack write loop  │
+        │     - Absorbs former RendererFailureDetector duty    │
+        │  3. MemoryPressureSignal.start()                     │
+        │     - ActivityManager.MemoryInfo + onTrimMemory      │
+        │  4. ThermalSignal.start()                            │
+        │     - Wraps DeviceThermalMonitor                     │
+        │  5. ProjectionTokenSignal.start()                    │
+        │     - Wraps ProjectionTokenManager.isValid()         │
+        │  6. WebSocketConnectionSignal.start()                │
+        │     - Wraps WebSocketClientManager.isConnected()     │
+        │  7. SafeModeSignal.start()                           │
+        │     - Wraps SafeModeController.isActive()            │
+        │                                                      │
+        │  Layer C — aggregator:                              │
+        │  8. DaemonStatusAggregator.start()                   │
+        │     - Polls all signals every 10s, builds the        │
+        │       immutable DaemonStatus read-model              │
+        │     - Also computes the 0-100 health score           │
+        │       (absorbs former SystemHealthScorer)            │
+        │                                                      │
+        │  Layer A — recovery (subscribes to the aggregator): │
+        │  9. RecoveryCoordinator.start()                      │
+        │     - Decides restart vs safe-mode vs fallback       │
+        │     - Holds the crash-loop policy (former            │
+        │       CrashLoopProtector responsibility) and the     │
+        │       soft-reboot risk policy (former                │
+        │       SoftRebootPredictor responsibility)            │
+        │     - The ONE class authorised to issue restarts     │
+        │                                                      │
+        │  Other safety-net startup:                          │
+        │  10. LastKnownStateDumper.start()                    │
+        │      - Writes heartbeat snapshot every 10s           │
+        │  11. UpdateChecker.schedule()                        │
+        │  12. IdleCaptureController.start()                   │
+        │  13. ProjectionDeathHandler.register()               │
         └──────────────────────────┬──────────────────────────┘
                                    │
                                    ▼
 T+11s   ┌─────────────────────────────────────────────────────┐
         │  DASHBOARD: First Full Update                        │
-        │  1. DaemonStatusProvider.aggregate()                 │
+        │  1. DaemonStatusAggregator.aggregate()                 │
         │     - Polls 15+ subsystems (route, capture, thermal, │
         │       crash, network, update, battery, memory, WS)   │
         │     - Builds unified DaemonStatus model              │
@@ -298,9 +314,9 @@ T+12s+  ┌───────────────────────
 | **PersistentAudioService** | NetworkStateMonitor | onCreate() | Begins internet connectivity checks | NO |
 | **PersistentAudioService** | UpdateChecker | Network connected + schedule | Polls server for updates | NO |
 | **DaemonLifecycleManager** | SpeakerForceEngine | start() | Begins route enforcement loop | YES |
-| **DaemonLifecycleManager** | MediaProjectionCaptureSession | start() | Opens audio capture | YES |
+| **DaemonLifecycleManager** | MediaProjectionSession | start() | Opens audio capture | YES |
 | **DaemonLifecycleManager** | AppLaunchObserver | start() | Begins launch monitoring | NO |
-| **DaemonLifecycleManager** | DaemonWatchdog | start() | Begins health checks | YES |
+| **DaemonLifecycleManager** | LivenessProbe | start() | Begins health checks | YES |
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
 | **SpeakerForceEngine** | AudioRouteWatcher | Every 500ms | Checks current route state | YES |
@@ -310,7 +326,7 @@ T+12s+  ┌───────────────────────
 | **AudioRouteManager** | SpeakerForceManager | Route authority change | Reasserts routing truth | YES |
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
-| **MediaProjectionCaptureSession** | PlaybackCaptureEngine | Token granted | Opens AudioRecord | YES |
+| **MediaProjectionSession** | PlaybackCaptureEngine | Token granted | Opens AudioRecord | YES |
 | **PlaybackCaptureEngine** | NativeAudioBridge | Buffer high water mark | Transfers PCM to C++ | YES |
 | **NativeAudioBridge** | AudioPipelineController | JNI callback | Coordinates native pipeline | YES |
 | **AudioPipelineController** | SpeakerPlaybackEngine | PCM ready | Writes to AudioTrack | YES |
@@ -339,21 +355,21 @@ T+12s+  ┌───────────────────────
 | **GlobalExceptionHandler** | LogStreamCollector | Exception caught | Logs crash context | YES |
 | **NativeCrashMarker** | Logger | Signal 11 detected | Flags native failure | YES |
 | **SoftRebootTracker** | StateRepository | Reboot detected | Persists reboot history | NO |
-| **DaemonWatchdog** | ServiceRecoveryManager | Ping timeout | Attempts service restart | YES |
-| **ServiceRecoveryManager** | CrashLoopProtector | Restart triggered | Checks if in crash loop | YES |
-| **CrashLoopProtector** | StartupBackoffScheduler | Loop detected | Delays next retry | YES |
+| **LivenessProbe** | DaemonStatusAggregator | Ping timeout | Reports DEGRADED signal value; aggregator forwards to RecoveryCoordinator | YES |
+| **RecoveryCoordinator** | StartupBackoffScheduler | Restart triggered + crash-loop policy violated | Delays next retry (former CrashLoopProtector responsibility absorbed here) | YES |
 | **BootStateRestorer** | LastKnownStateDumper | Service restart after reboot | Reads pre-crash context | YES |
 | **BootStateRestorer** | ProjectionTokenManager | After reboot | Checks token validity | YES |
 | **AccessibilityRecoveryHandler** | UiRecoveryDaemon | Accessibility stripped on reboot | Reopens settings | YES |
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
-| **MediaProjectionCaptureSession** | ProjectionDeathHandler | Token granted | Registers `MediaProjection.Callback.onStop()` death handler | YES |
+| **MediaProjectionSession** | ProjectionDeathHandler | Token granted | Registers `MediaProjection.Callback.onStop()` death handler | YES |
 | **ProjectionDeathHandler** | CrashTraceStore | onStop() fired | Persists projection death event for forensics | YES |
 | **ProjectionDeathHandler** | UiRecoveryDaemon | onStop() fired | Re-launches projection permission trampoline | YES |
 | **PlaybackCaptureEngine** | IdleCaptureController | Capture started | Begins silence monitoring (>30s threshold) | NO |
 | **IdleCaptureController** | PlaybackCaptureEngine | Silence >30s detected | Pauses native PCM read loop (~60% CPU saving) | NO |
 | **IdleCaptureController** | PlaybackCaptureEngine | Audio detected after pause | Resumes PCM read loop immediately | NO |
-| **DaemonStatusProvider** | All 15+ subsystems (SpeakerForceEngine, PlaybackCaptureEngine, SoftRebootPredictor, DeviceThermalMonitor, ProcessHealthMonitor, CrashMetrics, BatteryImpactMonitor, UpdateStateStore, NetworkStateMonitor, PipelineHealthChecker, WebSocketClientManager, etc.) | Every 10s | Aggregates live status into unified DaemonStatus model | YES |
+| **DaemonStatusAggregator** | Layer B signals (LivenessProbe, PipelineHealthChecker, MemoryPressureSignal, ThermalSignal, ProjectionTokenSignal, WebSocketConnectionSignal, SafeModeSignal) plus domain feeders (SpeakerForceEngine, CrashMetrics, BatteryImpactMonitor, UpdateStateStore, NetworkStateMonitor) | Every 10s | Aggregates signal values into unified DaemonStatus model + 0-100 health score | YES |
+| **RecoveryCoordinator** | DaemonStatusAggregator (subscribes to DaemonStatus flow) | DaemonStatus emit | Decides restart / safe-mode / fallback per ADR-0007 policy | YES |
 | Caller | Callee | Trigger | Purpose | Critical? |
 |--------|--------|---------|---------|-----------|
 | **WebSocketFrameHandler** | CommandHmacValidator | CommandFrame received over WSS | Validates HMAC + timestamp + nonce before forwarding | YES |
@@ -370,7 +386,7 @@ T+12s+  ┌───────────────────────
 
 ### Interaction Rules
 
-1. **No Circular Dependencies:** A calls B calls C. C must never call A directly. If C needs to trigger A, it must use `DaemonCommandDispatcher` (IPC) or `BroadcastActions` (system events).
+1. **No Circular Dependencies:** A calls B calls C. C must never call A directly. If C needs to trigger A, it must use `RemoteCommandDispatcher` (IPC) or `BroadcastActions` (system events).
 
 2. **Critical Path First:** All `Critical? = YES` interactions must complete before `Critical? = NO` interactions begin. This is enforced by `DaemonLifecycleManager.startAll()`.
 
@@ -460,16 +476,17 @@ Audio is now audible to user
 Daemon Subsystems (All 15+ packages)
 - SpeakerForceEngine: Route state
 - PlaybackCaptureEngine: Buffer health
-- SoftRebootPredictor: Risk score
 - DeviceThermalMonitor: Temperature
-- ProcessHealthMonitor: Service liveness
+- LivenessProbe: Service liveness signal
+- MemoryPressureSignal: Memory pressure
+- RecoveryCoordinator: Risk score (from absorbed SoftRebootPredictor policy)
 - CrashMetrics: Crash counts
 - BatteryImpactMonitor: Drain estimate
 - UpdateStateStore: Update status
 - NetworkStateMonitor: Connectivity state
        │
        ▼
-DaemonStatusProvider (Aggregator)
+DaemonStatusAggregator (Aggregator)
 - Gathers data from all subsystems every 10s
 - Creates unified DaemonStatus.kt model
 - Applies state sanitization (removes PII, formats text)
@@ -566,8 +583,8 @@ SYSTEM INSTALLATION
 Observers (Diagnostics Package)
 - AppLaunchObserver: Launch events
 - WindowTransitionTracker: UI anomalies
-- SoftRebootPredictor: Uptime gaps
-- RendererFailureDetector: Visual stasis
+- SoftRebootTracker: Uptime gaps (forensic instrument, ADR-0002)
+- PipelineHealthChecker: Pipeline health (absorbs former RendererFailureDetector duty)
 - PackageStateObserver: Fresh vs established crashes
        │
        ▼
@@ -611,7 +628,7 @@ Thread: AppDispatchers.IO
 
 | Failure Point | Detection Method | Immediate Response | Recovery Strategy | Escalation Path |
 |---------------|------------------|--------------------|-------------------|-----------------|
-| **PersistentAudioService dies** | ServiceHeartbeat timeout | DaemonWatchdog triggers restart | ServiceRecoveryManager restarts service with LastKnownStateDumper context | If restart fails 3x in 5min -> CrashLoopProtector enters SafeMode |
+| **PersistentAudioService dies** | LivenessProbe ping timeout | LivenessProbe emits DEGRADED SignalValue → DaemonStatusAggregator → RecoveryCoordinator | RecoveryCoordinator restarts service with LastKnownStateDumper context | If restart fails 3x in 5min → RecoveryCoordinator (crash-loop policy) enters SafeMode |
 | **AccessibilityService disabled** | AccessibilityStateTracker detects toggle off | UiRecoveryDaemon alerts user | SettingsAutomation re-opens accessibility settings via intent | If user doesn't re-enable in 60s -> Notification alert + vibration |
 | **MediaProjection token revoked** | ProjectionTokenManager onStop callback | CaptureRecoveryEngine pauses capture | ProjectionPermissionAutomator re-requests token via trampoline activity | If re-request fails -> CommunicationModeFallback activates (VoIP-only) |
 | **AudioFocus lost (Call/Alarm)** | AudioFocusMonitor receives loss callback | AudioFocusHandler pauses capture | InterruptionPolicy decides action (pause/duck/ignore) | On focus regain -> AudioFocusHandler resumes capture within 500ms |
@@ -620,7 +637,7 @@ Thread: AppDispatchers.IO
 | **Zygote soft reboot** | SoftRebootTracker detects uptime anomaly | All services die | BootReceiver restarts PersistentAudioService | LastKnownStateDumper provides pre-crash context -> BootStateRestorer resumes state |
 | **Ring buffer overflow** | UnderrunGuard detects full buffer | LatencyOptimizer increases buffer size | PCM Mixer drops oldest frames to prevent deadlock | If overflow persists -> CapturePerformanceTracker flags starvation |
 | **Notification dashboard fails** | ServiceNotificationDashboard detects post failure | NotificationCompatBridge recreates notification | Falls back to compact view (Tier 1 only) | If all notification channels fail -> SilentKeepAliveService maintains daemon |
-| **Database corruption** | DaemonDatabaseMigrations detects schema mismatch | StateRepository opens read-only fallback | Runs migration on next clean boot | If migration fails -> Wipes and recreates database |
+| **Database corruption** | AppDatabaseMigrations detects schema mismatch | StateRepository opens read-only fallback | Runs migration on next clean boot | If migration fails -> Wipes and recreates database |
 | **Thermal throttling** | DeviceThermalMonitor detects critical temp | SafeModeController disables capture | Reduces sample rate 48kHz -> 44.1kHz -> 32kHz | If temp continues rising -> EmergencyStopAction kills daemon |
 | **Permission denied (A13)** | NotificationPermissionManager checks POST_NOTIFICATIONS | Blocks foreground service start | Requests permission via system dialog | If user denies -> Service cannot start, shows permanent error |
 | **Launcher icon tapped** | BootstrapActivity.onCreate() | Immediate finish() + crash prevention | LauncherIconHider has already disabled it | If somehow triggered -> AppExitDispatcher.teardownAll() |
@@ -640,7 +657,7 @@ Thread: AppDispatchers.IO
 1. Stop affected subsystem (isolate the failure)
 2. Log crash context to LastKnownStateDumper
 3. Increment CrashMetrics counter
-4. Check CrashLoopProtector (are we in a restart storm?)
+4. Check RecoveryCoordinator crash-loop policy (are we in a restart storm?)
    - If YES: Activate StartupBackoffScheduler (exponential delay)
    - If NO: Proceed to step 5
 5. Attempt primary recovery (e.g., restart service, re-request token)
@@ -684,7 +701,7 @@ Rule: All storage and network operations. Thread-safe.
 AppDispatchers.Default (CPU-Intensive)
 - PCM processing (resampling, mixing, volume shaping)
 - Metrics calculation (latency, crash counts, battery)
-- Signature pattern matching (SoftRebootPredictor)
+- Signature pattern matching (RecoveryCoordinator soft-reboot risk policy)
 - Log formatting (TimestampedLogFormatter)
 - Update checksum verification (SHA-256)
 - `RemoteCommandExecutor` command execution (post-HMAC validation)
@@ -693,7 +710,7 @@ AppDispatchers.Default (CPU-Intensive)
 Rule: Heavy computation. No blocking I/O. No UI calls.
 
 AppDispatchers.IO (additional, beyond the items listed above)
-- `DaemonStatusProvider.aggregate()` — runs every 10s, aggregates from 15+ subsystems
+- `DaemonStatusAggregator.aggregate()` — runs every 10s, aggregates from 15+ subsystems
 - `WebSocketClientManager` — frame parsing, send/receive, `PendingResultQueue` flush on reconnect
 - `WebSocketKeepAliveEngine` — ping frames every 15s
 - `WebSocketTelemetryDispatcher` — outbound telemetry encoding
@@ -703,7 +720,7 @@ AppDispatchers.IO (additional, beyond the items listed above)
 
 ServiceScope (Long-Lived Service)
 - SpeakerForceEngine loop (every 500ms)
-- DaemonWatchdog pings (every 5s)
+- LivenessProbe pings (every 5s)
 - Dashboard updates (every 10s)
 - Monitoring polls (every 30s)
 - Heartbeat checks (every 15s)
@@ -793,7 +810,7 @@ Phase 3: Initialization (T+2s to T+3s)
 ├── 3.1 VyzorixAppInitializer.execute()
 │   ├── 3.1.1 NotificationChannelManager.createChannels()
 │   │   └── Creates: daemon_primary, diagnostics, updates
-│   ├── 3.1.2 DaemonDatabase.getInstance() + Migrations
+│   ├── 3.1.2 AppDatabase.getInstance() + Migrations
 │   ├── 3.1.3 KeystoreManager.initialize()
 │   ├── 3.1.4 AppConfig.load()
 │   └── 3.1.5 PermissionAutoGranter.requestAll()
@@ -829,7 +846,7 @@ Phase 5: Core Services (T+6s to T+7s)
 ├── 5.3 DaemonLifecycleManager.startAll()
 │   ├── 5.3.1 AudioRouteManager.initialize()
 │   ├── 5.3.2 SpeakerForceManager.initialize()
-│   ├── 5.3.3 ProjectionSessionManager.initialize()
+│   ├── 5.3.3 MediaProjectionSession.initialize()
 │   └── 5.3.4 RecoveryOrchestrator.initialize()
 └── 5.4 HeadlessDaemonController.activate()
 
@@ -839,35 +856,45 @@ Phase 6: Audio Pipeline (T+7s to T+9s)
 │   ├── 6.2.1 AudioRouteWatcher.queryDevices()
 │   ├── 6.2.2 NokiaC22DeviceProfile.applyWorkarounds()
 │   └── 6.2.3 AudioManager.setMode(MODE_IN_COMMUNICATION)
-├── 6.3 MediaProjectionCaptureSession.open()
+├── 6.3 MediaProjectionSession.open()
 ├── 6.4 PlaybackCaptureEngine.start()
 ├── 6.5 NativeLoader.loadLibrary()
 ├── 6.6 NativeAudioBridge.initialize()
 └── 6.7 AudioPipelineController.start()
 
-Phase 7: Monitoring & Safety (T+9s to T+11s)
-├── 7.1 DaemonWatchdog.start()
-│   └── Broad daemon health; 5s pings; calls ServiceRecoveryManager on timeout
-├── 7.2 PipelineHealthChecker.monitor()
-│   └── Audio-specific: AudioRecord/AudioTrack loops; feeds DaemonStatusProvider
-├── 7.3 AppLaunchObserver.register()
-├── 7.4 WindowTransitionTracker.register()
-├── 7.5 SoftRebootPredictor.startUptimeMonitoring()
-├── 7.6 RendererFailureDetector.startStasisWatch()
-├── 7.7 DeviceThermalMonitor.startPolling()
-├── 7.8 ProcessHealthMonitor.startHeartbeat()
-├── 7.9 NetworkStateMonitor.register()
-├── 7.10 UpdateChecker.schedule()
-├── 7.11 CrashLoopProtector.enable()
-├── 7.12 LastKnownStateDumper.start()
-├── 7.13 IdleCaptureController.start()
-│   ├── 7.13.1 Subscribe to PlaybackStateMonitor (silence detection)
-│   └── 7.13.2 Configure 30s silence threshold for pause; ~60% CPU saving
-├── 7.14 ProjectionDeathHandler.register()
-│   └── Listens for MediaProjection.Callback.onStop(); triggers UiRecoveryDaemon
-└── 7.15 DaemonStatusProvider.start()
-    ├── 7.15.1 Wire upstream subscribers from all 15+ subsystems
-    └── 7.15.2 Schedule aggregate() every 10s on AppDispatchers.IO
+Phase 7: Monitoring & Safety (T+9s to T+11s)  — ADR-0007 three-layer health
+├── Layer B — signal sources
+│   ├── 7.1 LivenessProbe.start()           → 'is the daemon responsive?'
+│   ├── 7.2 PipelineHealthChecker.monitor() → 'is audio flowing?'
+│   ├── 7.3 MemoryPressureSignal.start()    → 'are we near OOM?'
+│   ├── 7.4 ThermalSignal.start()           → 'are we throttling?'
+│   ├── 7.5 ProjectionTokenSignal.start()   → 'do we have a token?'
+│   ├── 7.6 WebSocketConnectionSignal.start() → 'is C2 reachable?'
+│   └── 7.7 SafeModeSignal.start()          → 'are we in safe mode?'
+├── Layer C — aggregator
+│   └── 7.8 DaemonStatusAggregator.start()
+│       ├── 7.8.1 Subscribe to every Layer B signal
+│       ├── 7.8.2 Schedule aggregate() every 10s on AppDispatchers.IO
+│       └── 7.8.3 Compute 0-100 health score (absorbs former SystemHealthScorer)
+├── Layer A — recovery
+│   └── 7.9 RecoveryCoordinator.start()
+│       ├── 7.9.1 Subscribe to DaemonStatus flow
+│       ├── 7.9.2 Apply crash-loop policy (absorbs former CrashLoopProtector)
+│       └── 7.9.3 Apply soft-reboot risk policy (absorbs former SoftRebootPredictor)
+├── Forensic instruments (NOT health — see ADR-0002)
+│   ├── 7.10 AppLaunchObserver.register()
+│   ├── 7.11 WindowTransitionTracker.register()
+│   └── 7.12 SoftRebootTracker.start()
+├── Domain monitors
+│   ├── 7.13 DeviceThermalMonitor.startPolling()
+│   └── 7.14 NetworkStateMonitor.register()
+├── 7.15 UpdateChecker.schedule()
+├── 7.16 LastKnownStateDumper.start()
+├── 7.17 IdleCaptureController.start()
+│   ├── 7.17.1 Subscribe to PlaybackStateMonitor (silence detection)
+│   └── 7.17.2 Configure 30s silence threshold for pause; ~60% CPU saving
+└── 7.18 ProjectionDeathHandler.register()
+    └── Listens for MediaProjection.Callback.onStop(); triggers UiRecoveryDaemon
 
 Phase 7b: C2 Stack (T+11s, deferred until network stable — Layer 8 in BUILD_ORDER.md)
 ├── 7b.1 KeystoreManager.unsealCommandSecretKey()
@@ -921,17 +948,18 @@ Device Reboots or PersistentAudioService Dies (LMK / Soft Reboot)
 
 ```
 Phase 1: Stop Monitoring (T+0s to T+1s)
-├── 1.1 DaemonWatchdog.stop()
-├── 1.2 All Observers.unregister()
-├── 1.3 LastKnownStateDumper.finalize()
-├── 1.4 CrashLoopProtector.reset()
-└── 1.5 UpdateChecker.cancel()
+├── 1.1 RecoveryCoordinator.stop()    (Layer A first, so it stops issuing actions)
+├── 1.2 DaemonStatusAggregator.stop() (Layer C)
+├── 1.3 All Layer B signals.stop()    (LivenessProbe, PipelineHealthChecker, etc.)
+├── 1.4 All Observers.unregister()    (AppLaunchObserver, etc.)
+├── 1.5 LastKnownStateDumper.finalize()
+└── 1.6 UpdateChecker.cancel()
 
 Phase 2: Stop Audio Pipeline (T+2s to T+3s)
 ├── 2.1 AudioPipelineController.stop()
 ├── 2.2 NativeAudioBridge.cleanup()
 ├── 2.3 PlaybackCaptureEngine.stop()
-├── 2.4 MediaProjectionCaptureSession.close()
+├── 2.4 MediaProjectionSession.close()
 ├── 2.5 SpeakerForceEngine.stopLoop()
 └── 2.6 AudioFocusHandler.unregister()
 
@@ -946,7 +974,7 @@ Phase 3: Stop Core Services (T+4s to T+5s)
 Phase 4: Cleanup (T+6s to T+7s)
 ├── 4.1 ServiceScope.cancel()
 ├── 4.2 ThreadIsolationExecutor.shutdown()
-├── 4.3 DaemonDatabase.close()
+├── 4.3 AppDatabase.close()
 ├── 4.4 KeystoreManager.release()
 ├── 4.5 OverlayShortcutController.destroy()
 ├── 4.6 RouterAccessibilityService.onDestroy()
@@ -956,7 +984,7 @@ Phase 4: Cleanup (T+6s to T+7s)
 ├── 4.9 PendingResultQueue.clear()
 ├── 4.10 ProjectionDeathHandler.unregister()
 ├── 4.11 IdleCaptureController.stop()
-└── 4.12 DaemonStatusProvider.stop()
+└── 4.12 DaemonStatusAggregator.stop()
 ```
 
 ---
@@ -1132,7 +1160,7 @@ Notes:
 | `foregroundServiceType="mediaPlayback"` | PersistentAudioService | Required for A13 foreground service | `MissingForegroundServiceTypeException` |
 | `foregroundServiceType="dataSync"` | UpdateDownloadService | Required for background APK downloads | Download service killed by system |
 | `POST_NOTIFICATIONS` permission | NotificationChannelManager | Required for A13 notifications | Notification silently dropped |
-| `MediaProjection` API | MediaProjectionCaptureSession | Captures system audio mix | Cannot bypass app-level audio blocks |
+| `MediaProjection` API | MediaProjectionSession | Captures system audio mix | Cannot bypass app-level audio blocks |
 | `AccessibilityService` | RouterAccessibilityService | Daemon entrypoint, UI monitoring | Cannot automate permissions or detect crashes |
 | `UsageStatsManager` | AppLaunchObserver | Detects app launches | Cannot correlate launches with crashes |
 | `ApplicationExitInfo` | SoftRebootTracker | Detects process death reasons | Cannot distinguish SYSTEM_DIED from APP_BUG |
@@ -1185,17 +1213,17 @@ Notes:
 
 | Subsystem | Key Files | Dependencies | Failure Impact |
 |-----------|-----------|--------------|----------------|
-| **Bootstrap** | VyzorixAppInitializer, BootstrapCoordinator, LauncherIconHider, BootStateRestorer | NotificationChannelManager, DaemonDatabase, KeystoreManager | Entire daemon fails to start or icon not hidden |
+| **Bootstrap** | VyzorixAppInitializer, BootstrapCoordinator, LauncherIconHider, BootStateRestorer | NotificationChannelManager, AppDatabase, KeystoreManager | Entire daemon fails to start or icon not hidden |
 | **Accessibility** | RouterAccessibilityService, AccessibilityEventRouter, UiRecoveryDaemon, AccessibilityRecoveryHandler | PermissionScreenWatcher, SettingsAutomation, OverlayShortcutController | No crash detection, no permission automation, no recovery |
 | **Audio Routing** | SpeakerForceEngine, AudioRouteWatcher, SpeakerForceManager | NokiaC22DeviceProfile, AudioRouteManager | Audio routes to broken headset jack |
-| **Capture** | MediaProjectionCaptureSession, PlaybackCaptureEngine, ProjectionTokenManager | AudioCaptureConfig, TokenPersistence | No audio capture, silent pipeline |
+| **Capture** | MediaProjectionSession, PlaybackCaptureEngine, ProjectionTokenManager | AudioCaptureConfig, TokenPersistence | No audio capture, silent pipeline |
 | **Playback** | SpeakerPlaybackEngine, AudioTrackController, LatencyOptimizer | AudioTrackFactory, UnderrunRecovery | Audio stuttering, crackling, or silence |
 | **Native** | NativeAudioBridge, NativeLoader, AudioPipelineController | C++ ring buffer, PCM mixer | Falls back to Java-only (higher latency) |
-| **Diagnostics** | AppLaunchObserver, SoftRebootPredictor, RendererFailureDetector | LogStreamCollector, RollingLogWriter | Cannot diagnose crash causes |
-| **Monitoring** | DaemonWatchdog, ProcessHealthMonitor, DeviceThermalMonitor | PipelineHealthChecker, CrashLoopProtector | Silent failures go undetected |
-| **Dashboard** | ServiceNotificationDashboard, NotificationCompatBridge | DaemonStatusProvider, RemoteViews layouts | User cannot see daemon status |
-| **Storage** | LogFileRotator, CrashSnapshotExporter, StateRepository | DaemonDatabase, FileProvider | Diagnostic data lost on crash |
-| **Recovery** | RecoveryOrchestrator, ServiceRecoveryManager, WatchdogEscalationPolicy | CrashLoopProtector, StartupBackoffScheduler | Single failure becomes permanent |
+| **Diagnostics** | AppLaunchObserver, SoftRebootTracker, WindowTransitionTracker | LogStreamCollector, RollingLogWriter | Cannot diagnose crash causes |
+| **Health monitoring** | Layer B signals (LivenessProbe, PipelineHealthChecker, MemoryPressureSignal, ThermalSignal, ProjectionTokenSignal, WebSocketConnectionSignal, SafeModeSignal) | DaemonStatusAggregator (Layer C), DeviceThermalMonitor | Daemon cannot self-assess; recovery coordinator starves |
+| **Dashboard** | ServiceNotificationDashboard, NotificationCompatBridge | DaemonStatusAggregator, RemoteViews layouts | User cannot see daemon status |
+| **Storage** | LogFileRotator, CrashSnapshotExporter, StateRepository | AppDatabase, FileProvider | Diagnostic data lost on crash |
+| **Recovery** | RecoveryCoordinator (sole authority), RecoveryOrchestrator, WatchdogEscalationPolicy | StartupBackoffScheduler, DaemonStatusAggregator | Single failure becomes permanent |
 | **Updates** | UpdateChecker, UpdateDownloader, UpdateInstaller | UpdateConfig, NetworkStateMonitor, UpdateStateStore | No remote updates, manual APK install required |
 | **Network** | NetworkStateMonitor, UpdateDownloadClient | ConnectivityManager, OkHttp | Update checks fail silently |
 | **Overlay** | OverlayShortcutController, OverlayPermissionManager | WindowManager, SYSTEM_ALERT_WINDOW | No floating toggle button |

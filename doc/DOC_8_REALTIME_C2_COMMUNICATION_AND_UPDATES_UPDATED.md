@@ -40,7 +40,7 @@ telemetry:
                 │                                        CommandHmacValidator
                 │                                                     │
                 │                                                     ▼ (Directs validated JSON payloads)
-                │                                        DaemonCommandDispatcher
+                │                                        RemoteCommandDispatcher
                 │                                                     │
                 │ 1. Executes routing adjustment                      ▼
                 │◄────────────────────────────────────────────────────┤
@@ -79,7 +79,7 @@ WebSocketFrameHandler.kt
     - Check nonce not in NonceCache (replay protection)
     - Store nonce in NonceCache (5min TTL)
     │
-    ├── VALID → RemoteCommandExecutor.kt → DaemonCommandDispatcher.kt → subsystem
+    ├── VALID → RemoteCommandExecutor.kt → RemoteCommandDispatcher.kt → subsystem
     └── INVALID → log to CrashTraceStore → send rejection result → do not execute
 ```
 
@@ -228,7 +228,7 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/websocket/
 *   **Path**: `core/services/.../websocket/WebSocketFrameHandler.kt`
 *   **Architectural Role**: Decodes WebSocket frame payloads. Parses command JSON structures.
     Passes parsed `CommandFrame` to `CommandHmacValidator.kt` for signature verification
-    before forwarding validated commands to `DaemonCommandDispatcher` for execution. Frames
+    before forwarding validated commands to `RemoteCommandDispatcher` for execution. Frames
     that fail validation are rejected and logged — never forwarded.
 
 ### 4.4 `WebSocketKeepAliveEngine.kt`

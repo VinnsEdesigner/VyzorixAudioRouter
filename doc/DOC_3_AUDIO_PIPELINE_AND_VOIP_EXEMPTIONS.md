@@ -471,7 +471,7 @@ The `capture` package captures system-wide audio using the privileged `MediaProj
 
 ```text
 core/services/src/main/kotlin/com/vyzorix/audiorouter/services/capture/
-├── MediaProjectionCaptureSession.kt
+├── MediaProjectionSession.kt
 ├── PlaybackCaptureEngine.kt
 ├── AudioCaptureConfig.kt
 ├── CapturePermissionStore.kt
@@ -482,8 +482,8 @@ core/services/src/main/kotlin/com/vyzorix/audiorouter/services/capture/
 └── TokenPersistence.kt
 ```
 
-### 6.1 `MediaProjectionCaptureSession.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/capture/MediaProjectionCaptureSession.kt`
+### 6.1 `MediaProjectionSession.kt`
+*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/capture/MediaProjectionSession.kt`
 *   **Architectural Role**: Manages active projection sessions, binding tokens, and managing system callbacks.
 
 ### 6.2 `PlaybackCaptureEngine.kt`

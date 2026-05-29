@@ -366,7 +366,7 @@ vyzorix-update-server/
             └── charts/
                 ├── LiveCPUChart.tsx                       # Real-time CPU load; windowed to last 60 data points
                 ├── MemoryFootprintChart.tsx               # JVM cache budgets, GC pause events, native heap over time
-                ├── RiskScoreChart.tsx                     # SoftRebootPredictor risk score history; threshold lines
+                ├── RiskScoreChart.tsx                     # RecoveryCoordinator risk score history (from absorbed SoftRebootPredictor policy); threshold lines
                 │                                          # at 50 (warn) and 75 (critical)
                 ├── BufferHealthChart.tsx                  # Real-time audio capture buffer fill level (0-100%);
                 │                                          # plots underrun events; critical for diagnosing capture

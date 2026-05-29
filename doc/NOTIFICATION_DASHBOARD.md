@@ -1,4 +1,6 @@
-# NOTIFICATION_DASHBOARD.md — Read-Only Status Interface
+# NOTIFICATION_DASHBOARD.md — Read-Only Status Interface (deep-dive of DOC_1)
+
+> **This is a deep-dive of [`DOC_1_BOOTSTRAP_AND_ORCHESTRATION.md`](./DOC_1_BOOTSTRAP_AND_ORCHESTRATION.md).** DOC_1 is the canonical spec for the foreground service and notification stack; this document focuses on the Tier 1/2/3 expandable notification layout and the data sources it reads from. The data source contract reads from `DaemonStatusAggregator` (ADR-0007).
 
 ## Objective
 
@@ -155,7 +157,7 @@ The dashboard is updated by a coroutine loop running inside `PersistentAudioServ
 private fun startDashboardUpdates() {
     lifecycleScope.launch {
         while (isActive) {
-            val status = DaemonStatusProvider.gatherCurrentStatus()
+            val status = DaemonStatusAggregator.gatherCurrentStatus()
             val views = buildRemoteViews(status)
             notificationManager.notify(DASHBOARD_ID, buildNotification(views))
             delay(10_000L) // Update every 10 seconds
@@ -166,13 +168,13 @@ private fun startDashboardUpdates() {
 
 **Data Gathering:**
 
-`DaemonStatusProvider` collects real-time data from:
+`DaemonStatusAggregator` collects real-time data from:
 
 - `AudioRouteWatcher` (Route state)
 
 - `PlaybackCaptureEngine` (Buffer health, sample rate)
 
-- `SoftRebootPredictor` (Risk score, uptime, reboot count)
+- `SoftRebootTracker` (uptime, reboot count) + `RecoveryCoordinator` soft-reboot risk policy (Risk score). The tracker is the forensic instrument (ADR-0002); the risk score is computed by the coordinator's policy from tracker data + Layer B health signals.
 
 - `DeviceThermalMonitor` (Temperature state)
 
@@ -273,12 +275,12 @@ Some devices enforce a hard max height (e.g., 256dp). If content is clipped:
 If `com.android.systemui` crashes (rare but possible during a soft reboot):
 
 - The notification disappears temporarily.
-- `ServiceRecoveryManager` detects the loss via `NotificationManager.getActiveNotifications()`.
+- `RecoveryCoordinator` detects the loss via `NotificationManager.getActiveNotifications()`.
 - It re-posts the notification within 2 seconds.
 
 ### 3. "Safe Mode" Activation
 
-If `SoftRebootPredictor` raises the Risk Score > 75:
+If `RecoveryCoordinator`'s soft-reboot risk policy raises the Risk Score > 75 (drawing on `SoftRebootTracker` history + Layer B health signals):
 
 - The dashboard switches to a **Minimal View**.
 - Non-critical sections (Capture, Diagnostics, OEM) are hidden.

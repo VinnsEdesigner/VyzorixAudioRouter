@@ -177,10 +177,19 @@ VyzorixAudioRouter/
 │   │           │   └── RawResourceUriHelper.kt            # Exposes content URIs for raw audio resources (silent_anchor.wav)
 │   │           │                                          # to core/services modules; services cannot reference R.raw.*
 │   │           │                                          # from app module directly
-│   │           ├── device/
-│   │           │   ├── NokiaC22DeviceProfile.kt           # Nokia C22 heuristics and compatibility flags
-│   │           │   └── ZygoteCrashMitigator.kt            # Delays risky operations during startup to prevent Nokia C22
-│   │           │                                          # Zygote crash on launcher tap
+│   │           ├── device/                                # Device-quirk profile system (ADR-0008, DEVICE_QUIRK_PROFILES.md).
+│   │           │   ├── DeviceQuirkProfile.kt              # Generic data class capturing all device-specific knobs
+│   │           │   │                                      # (schedulerBehavior, keystoreReliability, thermalZones,
+│   │           │   │                                      # alsaTimingGapMs, audioModeQuirks, etc).
+│   │           │   ├── DeviceQuirkRegistry.kt             # Selects active profile at startup based on Build.MANUFACTURER
+│   │           │   │                                      # + Build.MODEL. Returns UnknownDeviceProfile by default.
+│   │           │   ├── ZygoteCrashMitigator.kt            # Delays risky operations during startup to prevent Nokia C22
+│   │           │   │                                      # Zygote crash on launcher tap.
+│   │           │   └── profiles/
+│   │           │       ├── NokiaC22Profile.kt             # Constant DeviceQuirkProfile object for the Nokia C22.
+│   │           │       │                                  # See doc/NOKIA_C22_NOTES.md for per-field rationale.
+│   │           │       └── UnknownDeviceProfile.kt        # Safe-defaults profile for unrecognized devices.
+│   │           │                                          # Daemon runs degraded but functional.
 │   │           └── utils/
 │   │               ├── PermissionHelper.kt                # Runtime permission utility methods
 │   │               ├── NotificationHelper.kt              # Foreground notification helpers
@@ -216,10 +225,10 @@ VyzorixAudioRouter/
 │   │           │   ├── DateTimeTypeConverters.kt          # Converts Instant/Long timestamps for all entities
 │   │           │   └── UpdateStateTypeConverters.kt       # Converts UpdateState enum, download URLs, timestamps
 │   │           ├── database/
-│   │           │   ├── DaemonDatabase.kt                  # Room database definition
+│   │           │   ├── AppDatabase.kt                  # Room database definition
 │   │           │   │                                      # - crash bundles index, route history, permission grants,
 │   │           │   │                                      #   update state, download metadata
-│   │           │   ├── DaemonDatabaseMigrations.kt        # Schema version management; includes migration SQL for all
+│   │           │   ├── AppDatabaseMigrations.kt        # Schema version management; includes migration SQL for all
 │   │           │   │                                      # tables: devices, logs, state, update_history, permission_grants
 │   │           │   └── SecureSupportHelper.kt             # Bridges SQLCipher 256-bit AES encryption into Room DB factory
 │   │           ├── dao/
@@ -432,7 +441,7 @@ VyzorixAudioRouter/
 │               │                                          # moved here to respect downward-only dependency rules
 │               │
 │               ├── capture/
-│               │   ├── MediaProjectionCaptureSession.kt   # Manages active projection sessions; handles revocation callbacks
+│               │   ├── MediaProjectionSession.kt   # Manages active projection sessions; handles revocation callbacks
 │               │   ├── PlaybackCaptureEngine.kt           # Configures AudioRecord with AudioPlaybackCaptureConfiguration
 │               │   ├── AudioCaptureConfig.kt              # Capture parameters (sample rates, mono/stereo, buffer budgets)
 │               │   ├── CapturePermissionStore.kt          # Persists MediaProjection consent state
@@ -476,13 +485,15 @@ VyzorixAudioRouter/
 │               │   ├── RuntimeTraceAssembler.kt           # Correlates crash events into unified post-crash trace
 │               │   ├── DiagnosticCompression.kt           # Compresses diagnostic files into encrypted ZIP
 │               │   ├── EventCorrelationEngine.kt          # Matches app launches to system crashes
-│               │   ├── SystemHealthScorer.kt              # Computes 0-100 stability score; triggers safe mode at >75
+│               │   # NOTE: SystemHealthScorer.kt folded into DaemonStatusAggregator (see NAMING_RENAMES.md / ADR-0007)
 │               │   └── system/
 │               │       ├── AppLaunchObserver.kt           # UsageStatsManager MOVE_TO_FOREGROUND; 10s survival timer
 │               │       ├── WindowTransitionTracker.kt     # Flash Crash detection (<500ms window life)
-│               │       ├── PackageStateObserver.kt        # Fresh install vs stable package differentiation
-│               │       ├── SoftRebootPredictor.kt         # SystemClock.uptimeMillis() anomaly detection
-│               │       └── RendererFailureDetector.kt     # GPU freeze: no CONTENT_CHANGED events >5s
+│               │       └── PackageStateObserver.kt        # Fresh install vs stable package differentiation
+│               │       # NOTE: SoftRebootPredictor.kt folded into RecoveryCoordinator (policy, not signal)
+│               │       # NOTE: RendererFailureDetector.kt folded into PipelineHealthChecker (audio pipeline owns this)
+│               │       # NOTE: SoftRebootTracker.kt remains separate — it is a forensic measurement tool (ADR-0002),
+│               │       #       NOT a health signal. See doc/SOFT_REBOOT_ANALYSIS.md.
 │               │
 │               ├── fallback/
 │               │   ├── PlaybackCaptureFallback.kt         # Redirects to Java-only AudioRecord if projection fails
@@ -496,24 +507,38 @@ VyzorixAudioRouter/
 │               ├── foreground/
 │               │   ├── PersistentAudioService.kt          # Primary foreground service (foregroundServiceType=mediaPlayback)
 │               │   │                                      # - Holds capture loops, native JNI bridges, C2 WebSocket managers
-│               │   ├── DaemonStatusProvider.kt            # Central aggregator collecting live status from all 15+ subsystems
-│               │   │                                      # every 10s; builds DaemonStatus model for ServiceNotificationDashboard
-│               │   │                                      # Pulls from: SpeakerForceEngine, PlaybackCaptureEngine,
-│               │   │                                      # SoftRebootPredictor, DeviceThermalMonitor, ProcessHealthMonitor,
-│               │   │                                      # CrashMetrics, BatteryImpactMonitor, UpdateStateStore,
-│               │   │                                      # NetworkStateMonitor; runs on AppDispatchers.IO
+│               │   ├── DaemonStatusAggregator.kt            # Layer C (ADR-0007): central aggregator collecting from Layer B signals
+│               │   │                                      # every 10s; produces immutable DaemonStatus model for the dashboard.
+│               │   │                                      # Reads: LivenessProbe, PipelineHealthChecker, MemoryPressureSignal,
+│               │   │                                      # ThermalSignal, ProjectionTokenSignal, WebSocketConnectionSignal,
+│               │   │                                      # SafeModeSignal. NO recovery logic — RecoveryCoordinator subscribes
+│               │   │                                      # to the output. Runs on AppDispatchers.IO.
 │               │   ├── ServiceNotification.kt             # Base notification layout; builder config, priorities
 │               │   ├── ServiceNotificationDashboard.kt    # Builds RemoteViews with live status; updates every 10s
 │               │   ├── SilentKeepAliveService.kt          # Low-priority bound service; maintains binder references
-│               │   ├── ServiceHeartbeat.kt                # Pings active threads at 5s intervals; triggers recovery on stall
-│               │   ├── ServiceRecoveryManager.kt          # Re-binds crashed services; executes StartupBackoffScheduler
-│               │   ├── DaemonWatchdog.kt                  # End-to-end daemon health monitor every 5s across all subsystems;
-│               │   │                                      # verifies capture loop, playback loop, route state, WS heartbeat;
-│               │   │                                      # distinct from ServiceHeartbeat (thread-only); calls
-│               │   │                                      # ServiceRecoveryManager on timeout
-│               │   ├── PipelineHealthChecker.kt           # Monitors AudioRecord read loop and AudioTrack write loop
-│               │   │                                      # specifically; reports pipeline health to DaemonStatusProvider;
-│               │   │                                      # distinct from DaemonWatchdog (broader daemon health)
+│               │   # NOTE: ServiceHeartbeat.kt folded into LivenessProbe (heartbeat is the mechanism the probe uses)
+│               │   ├── RecoveryCoordinator.kt             # Layer A (ADR-0007): the ONE class that issues restart / safe-mode /
+│               │   │                                      # fallback decisions. Subscribes to DaemonStatus, absorbs the policy
+│               │   │                                      # logic from SoftRebootPredictor + CrashLoopProtector. Executes
+│               │   │                                      # StartupBackoffScheduler. No other class restarts services directly.
+│               │   ├── LivenessProbe.kt                   # Layer B signal: answers 'is the daemon process responsive?'
+│               │   │                                      # Pings active threads at 5s intervals. Reports state as a SignalValue
+│               │   │                                      # to DaemonStatusAggregator. Does NOT trigger recovery itself.
+│               │   ├── PipelineHealthChecker.kt           # Layer B signal: answers 'is audio flowing?' Monitors AudioRecord read
+│               │   │                                      # loop and AudioTrack write loop. Absorbs the responsibilities of the
+│               │   │                                      # former RendererFailureDetector (surfaceflinger stalls show up here).
+│               │   │                                      # Reports state to DaemonStatusAggregator;
+│               │   │                                      # distinct from LivenessProbe (broader daemon health)
+│               │   ├── signals/                           # Layer B signal sources (ADR-0007). One file per signal.
+│               │   │                                      # Each signal exposes current(): SignalValue. DaemonStatus model
+│               │   │                                      # lives in core/common/model/DaemonStatus.kt (shared with dashboard).
+│               │   │   ├── SignalValue.kt                 # Common sealed type for a signal's current value + timestamp.
+│               │   │   ├── MemoryPressureSignal.kt        # Reads ActivityManager.MemoryInfo + ComponentCallbacks2 levels;
+│               │   │   │                                  # absorbs former ProcessHealthMonitor's memory-tracking duties.
+│               │   │   ├── ThermalSignal.kt               # Thin wrapper over DeviceThermalMonitor producing a SignalValue.
+│               │   │   ├── ProjectionTokenSignal.kt       # Asks ProjectionTokenManager.isValid() and produces SignalValue.
+│               │   │   ├── WebSocketConnectionSignal.kt   # Reads WebSocketClientManager.isConnected() each tick.
+│               │   │   └── SafeModeSignal.kt              # Reads SafeModeController.isActive() each tick.
 │               │   ├── BootReceiver.kt                    # RECEIVE_BOOT_COMPLETED → triggers BootStateRestorer
 │               │   └── actions/
 │               │       ├── NotificationActionReceiver.kt  # Binds notification button broadcast clicks; exported=false
@@ -530,7 +555,7 @@ VyzorixAudioRouter/
 │               ├── ipc/
 │               │   ├── AudioRouterBinder.kt               # Binder implementation; exposes AIDL interface methods
 │               │   ├── ServiceConnectionManager.kt        # Manages service binding; handles DeadObjectExceptions
-│               │   ├── DaemonCommandDispatcher.kt         # Routes commands to target modules
+│               │   ├── RemoteCommandDispatcher.kt         # Routes commands to target modules
 │               │   ├── RemoteCommandExecutor.kt           # Calls CommandHmacValidator.validate() BEFORE execution;
 │               │   │                                      # rejects commands with INVALID_SIGNATURE, EXPIRED_TIMESTAMP,
 │               │   │                                      # or REPLAYED_NONCE; 3 consecutive rejections within 60s
@@ -541,7 +566,7 @@ VyzorixAudioRouter/
 │               │
 │               ├── managers/
 │               │   ├── AudioRouteManager.kt               # Central speakerphone override interface; logs device transitions
-│               │   ├── ProjectionSessionManager.kt        # Owns MediaProjection lifecycle; handles revocation callbacks
+│               │   ├── MediaProjectionSession.kt        # Owns MediaProjection lifecycle; handles revocation callbacks
 │               │   ├── DaemonLifecycleManager.kt          # Strict start order: focus → routing → capture → schedulers
 │               │   ├── SpeakerForceManager.kt             # Single source of routing truth
 │               │   └── RecoveryOrchestrator.kt            # Evaluates subsystem failures; triggers fallbacks
@@ -558,9 +583,9 @@ VyzorixAudioRouter/
 │               ├── metrics/
 │               │   ├── AudioLatencyMetrics.kt             # Logs latency across JNI capture-and-playback pipeline
 │               │   ├── RouteSwitchMetrics.kt              # Route transition success rates and durations
-│               │   ├── CrashMetrics.kt                    # Process-level crash counter; feeds DaemonStatusProvider
+│               │   ├── CrashMetrics.kt                    # Process-level crash counter; feeds DaemonStatusAggregator
 │               │   ├── CapturePerformanceTracker.kt       # Packet drop and jitter; detects DRM-blocked apps via starvation
-│               │   └── BatteryImpactMonitor.kt            # Battery status and power usage estimate; feeds DaemonStatusProvider
+│               │   └── BatteryImpactMonitor.kt            # Battery status and power usage estimate; feeds DaemonStatusAggregator
 │               │
 │               ├── monitoring/
 │               │   ├── HeadsetStateMonitor.kt             # Physical headphone jack state via native system listeners
@@ -571,15 +596,17 @@ VyzorixAudioRouter/
 │               │   │                                      # audio/media/MediaSessionStateMonitor.kt
 │               │   ├── DeviceThermalMonitor.kt            # SoC thermal sensor polling; notifies on limit exceeded
 │               │   ├── RuntimeMemoryMonitor.kt            # System-wide RAM metrics; alerts below critical threshold
-│               │   ├── ProcessHealthMonitor.kt            # Process health; memory leaks; crash tracking
+│               │   # NOTE: ProcessHealthMonitor.kt folded into MemoryPressureSignal + LivenessProbe (ADR-0007)
 │               │   └── NetworkStateMonitor.kt             # ConnectivityManager.NetworkCallback; DNS ping via
 │               │                                          # NetworkPingHelper before update checks; triggers UpdateChecker
 │               │
 │               ├── oem/
 │               │   ├── NokiaAudioWorkarounds.kt           # AudioManager retry routines for Nokia background restrictions
-│               │   ├── UnisocPlatformTweaks.kt            # Thread parameters and timing gaps for Unisoc SC9863A
-│               │   ├── VendorRouteResetter.kt             # HAL reset routines; forces re-probe of routing tables
-│               │   └── DeviceQuirkRegistry.kt             # Central registry of device-specific behaviours
+│               │   ├── UnisocPlatformTweaks.kt            # Thread parameters and timing gaps for Unisoc SC9863A;
+│               │   │                                      # reads alsaTimingGapMs from DeviceQuirkRegistry.current().
+│               │   └── VendorRouteResetter.kt             # HAL reset routines; forces re-probe of routing tables.
+│               │   # NOTE: DeviceQuirkRegistry.kt moved to core/common/device/ (ADR-0008).
+│               │   #       Canonical location: core/common/device/DeviceQuirkRegistry.kt
 │               │
 │               ├── performance/
 │               │   ├── AdaptiveSamplingController.kt      # 500ms → 2000ms+ polling when route stable; tightens on drift
@@ -655,7 +682,7 @@ VyzorixAudioRouter/
 │               │   ├── ServicePermissionVerifier.kt       # Validates permissions before privileged commands;
 │               │   │                                      # enforces 5min command execution cooldown after 3 consecutive
 │               │   │                                      # HMAC rejections within 60s to prevent brute-force probing
-│               │   ├── ProjectionTokenValidator.kt        # Verifies MediaProjection token validity; flags expired
+│               │   # NOTE: ProjectionTokenValidator.kt folded into ProjectionTokenManager (ADR-0006)
 │               │   ├── AccessibilityIntegrityChecker.kt   # Alerts if accessibility service disabled or unbound
 │               │   ├── SafeIntentSanitizer.kt             # Sanitizes incoming intents; prevents redirect attacks
 │               │   ├── TokenEncryptor.kt                  # AES-GCM encryption/decryption for command_secret and
@@ -678,7 +705,7 @@ VyzorixAudioRouter/
 │               │   # Canonical location: core/common/utils/KeystoreManager.kt
 │               │
 │               ├── stability/
-│               │   ├── CrashLoopProtector.kt              # >3 crashes in 5min → triggers SafeModeController
+│               │   # NOTE: CrashLoopProtector.kt folded into RecoveryCoordinator (crash-loop policy moves to Layer A)
 │               │   ├── SafeModeController.kt              # Shuts non-essential modules; keeps SpeakerForceEngine only;
 │               │   │                                      # also calls NonceCache.clear() on safe mode entry
 │               │   ├── StartupBackoffScheduler.kt         # Exponential restart delay: 5s → 30s → 300s
@@ -754,7 +781,7 @@ VyzorixAudioRouter/
 │                   │                                      # queue after successful flush
 │                   ├── WebSocketConnectionListener.kt     # onOpen, onMessage, onFailure, onClosed callbacks
 │                   ├── WebSocketFrameHandler.kt           # Parses CommandFrame JSON; passes to CommandHmacValidator
-│                   │                                      # before forwarding to DaemonCommandDispatcher; frames
+│                   │                                      # before forwarding to RemoteCommandDispatcher; frames
 │                   │                                      # failing validation are logged and discarded — never forwarded
 │                   ├── WebSocketKeepAliveEngine.kt        # Ping frames every 15s to bypass carrier NAT timeouts
 │                   ├── WebSocketReconnectionPolicy.kt     # Randomized exponential backoff with jitter
