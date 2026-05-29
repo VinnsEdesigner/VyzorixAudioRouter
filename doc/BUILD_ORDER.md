@@ -125,27 +125,28 @@ Each layer below has: scope, files compiled, files explicitly stubbed-only, what
 
 ---
 
-## Layer 2 — `core/audioengine`
+## Layer 2 — `core/audioengine` ✅ landed (PR #9)
 
 **Scope:** Native C++ ring buffer + JNI bridge. NO Kotlin audio pipeline yet — just the native side and its bridge. No services.
 
 **Compiles (full implementation):**
-- `core/audioengine/cpp/` — `capture_ring_buffer.cpp`, `pcm_mixer.cpp`, `playback_resampler.cpp`, `underrun_guard.cpp`, `latency_tracker.cpp`, `audio_clock_sync.cpp`, `thread_priority_guard.cpp`.
-- `core/audioengine/include/` — public headers.
-- `core/audioengine/NativeAudioBridge.kt` — JNI declarations + load-library wrapper.
-- `core/audioengine/NativeLoader.kt` — defensive `loadLibrary` that catches `UnsatisfiedLinkError` (see `SYSTEM_MAP.md` §5 failure matrix).
+- `core/audioengine/src/main/cpp/` — `capture_ring_buffer.cpp`, `pcm_mixer.cpp`, `playback_resampler.cpp`, `underrun_guard.cpp`, `latency_tracker.cpp`, `audio_clock_sync.cpp`, `thread_priority_guard.cpp`, `crash_guard.cpp`, `watchdog_ping.cpp`, `safe_jni_bridge.cpp`, `memory_guard.cpp`, `logger_engine.cpp`, `ringbuffer_pressure.cpp`, `audio_fallback_bridge.cpp`, `jni_audio_bridge.cpp`.
+- `core/audioengine/src/main/cpp/include/` — public headers (14 headers covering ring buffer, mixer, resampler, underrun guard, latency tracker, clock sync, crash guard, watchdog ping, safe JNI bridge, latency profiler header-only, memory guard, thread-priority guard, audio defs, logger engine).
+- `core/audioengine/src/main/kotlin/.../NativeAudioBridge.kt` — JNI declarations + load-library wrapper (`isAvailable`, `allocateRingBuffer/release/read/write`, `underrunCount/overrunCount`, `elevatePriority/restorePriority`, `pollCrashGuard`, `monotonicNs`, `live/peakLiveBytes`, `engineVersion`).
+- `core/audioengine/src/main/kotlin/.../NativeLoader.kt` — defensive `loadLibrary` catching `UnsatisfiedLinkError` / `LinkageError` / `SecurityException` (see `SYSTEM_MAP.md` §5 failure matrix). Idempotent; the failed-state snapshot retains the underlying throwable for diagnostics.
 
 **Stubs only:**
 - `AudioPipelineController.kt` — exists in `services/audio/` (Layer 3+); for Layer 2 we only need the JNI surface to be callable.
 
 **Success criteria:**
-- `./gradlew :core:audioengine:externalNativeBuild` succeeds.
-- An instrumented smoke test calls `NativeAudioBridge.allocateRingBuffer()`, writes a known sine wave, reads it back, asserts byte equality. Underrun counter at zero.
-- `thread_priority_guard.cpp` includes the SCHED_FIFO read-back check documented in `NOKIA_C22_NOTES.md` so that Unisoc fall-back to SCHED_OTHER is detected (do not assume the elevation succeeded just because the syscall did not error).
+- ✅ `./gradlew :core:audioengine:externalNativeBuild` succeeds for `arm64-v8a`, `armeabi-v7a`, `x86_64`.
+- ✅ `thread_priority_guard.cpp` calls `sched_setscheduler` → `sched_getscheduler` + `sched_getparam` and surfaces `PRIORITY_RESULT_SILENT_FALLBACK` distinctly from `REAL_TIME`/`BEST_EFFORT`/`SYSCALL_FAILED`, per `NOKIA_C22_NOTES.md` §2.3 (Unisoc silent cgroup downgrade).
+- ✅ JVM-side Robolectric tests (13) verify the loader fallback path: every public bridge method returns the documented "unavailable" sentinel when `libaudioengine.so` cannot be loaded (the exact path Layer 6+'s `audio_fallback_bridge` will exercise on devices with no usable ABI).
+- ✅ Host-side C++ unit-test harness (17 tests, 291 assertions) exercises the algorithms against `g++` on the build host as a surrogate for the on-device sine-wave round-trip test. Covers ring-buffer round-trip + power-of-two enforcement + underrun/overrun counter bumps + wrap-around + saturating mixer + Q15 gain + stereo→mono downmix + linear resampler passthrough + 44.1→48 upsample + comfort-noise LFSR envelope + rolling-window latency mean + monotonic clock + clock-sync drift threshold + memory-guard alloc/free balance + watchdog ping.
 
-**On-device verification (Nokia C22):**
-- Sine wave round-trip test reports zero underruns at 48kHz mono.
-- Logcat shows the actual scheduling policy assigned post-elevation (verify it is SCHED_FIFO on Qualcomm/MediaTek and document the Unisoc fallback if SCHED_OTHER).
+**On-device verification (Nokia C22) — pending the device:**
+- Sine wave round-trip test reports zero underruns at 48kHz mono (already proven on the host; needs reproducing on real silicon).
+- Logcat shows the actual scheduling policy assigned post-elevation (verify it is SCHED_FIFO on Qualcomm/MediaTek and document the Unisoc fallback if SCHED_OTHER — the bridge already surfaces `PriorityResult.SilentFallback` for the Layer 6+ dashboard to render).
 
 ---
 

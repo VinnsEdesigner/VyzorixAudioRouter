@@ -93,3 +93,42 @@ jobs:
         with:
           name: core-data-test-report
           path: core/data/build/reports/tests/testDebugUnitTest
+
+  core-audioengine:
+    name: core:audioengine — native build + JVM + host C++ tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK + NDK
+        uses: android-actions/setup-android@v3
+        with:
+          # The NDK + CMake versions match `core/audioengine/build.gradle.kts`
+          # (`ndkVersion` and the CMake spec). Bumping either requires updating
+          # both this manifest and the gradle file.
+          packages: 'platforms;android-34 build-tools;34.0.0 platform-tools ndk;26.3.11579264 cmake;3.22.1'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Native build (assembleDebug — runs externalNativeBuild)
+        run: ./gradlew :core:audioengine:assembleDebug --no-daemon --stacktrace
+
+      - name: JVM tests (loader fallback path)
+        run: ./gradlew :core:audioengine:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Host C++ algorithm tests
+        run: ./gradlew :core:audioengine:runNativeHostTests --no-daemon --stacktrace
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-audioengine-test-report
+          path: core/audioengine/build/reports/tests/testDebugUnitTest
