@@ -26,22 +26,16 @@ const (
 // between the device and the in-memory dispatch queue.
 //
 // Frame shape (device → server): { "type": "telemetry"|"ack", ... }
-// Frame shape (server → device): { "type": "command", ... }
+// Frame shape (server → device): canonical CommandFrame per
+//                                  COMMAND_SECURITY.md §2 (transactionId,
+//                                  deviceId, action, timestampMs, nonce,
+//                                  params, hmac).
 //
-// Real server validates an HMAC handshake header before upgrade; the mock
-// is more permissive but logs anything that looks malformed.
+// The upgrade itself is HMAC-authenticated per DEVICE_REGISTRATION.md §4.1
+// (CONNECT-style HMAC over "CONNECT:{deviceId}:{ts}:{nonce}").
 func (s *server) handleDeviceStream(w http.ResponseWriter, r *http.Request, deviceID string) {
-	if _, found := s.store.get(deviceID); !found {
-		writeError(w, http.StatusNotFound, "unknown_device", deviceID)
+	if !s.requireWSConnectHMAC(w, r, deviceID) {
 		return
-	}
-
-	if s.strictHMAC {
-		if err := s.verifyHandshakeHMAC(r, deviceID); err != nil {
-			s.log.Warn("ws handshake hmac rejected", "deviceId", deviceID, "err", err)
-			writeError(w, http.StatusUnauthorized, "bad_hmac", err.Error())
-			return
-		}
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)

@@ -1,88 +1,137 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 )
 
-// commandRequest matches the body schema documented in COMMAND_SECURITY.md
-// and DEVICE_REGISTRATION.md §5 (command issuance flow). All fields except
-// args are required.
-type commandRequest struct {
-	Command   string          `json:"command"`
-	Args      json.RawMessage `json:"args,omitempty"`
-	Nonce     string          `json:"nonce"`
-	Timestamp int64           `json:"timestamp"`
-	Signature string          `json:"signature,omitempty"` // signed by server in real deployment
+// commandFrame is the canonical CommandFrame JSON schema documented in
+// COMMAND_SECURITY.md §2. Field tags MUST stay in lockstep with the spec:
+//
+//	transactionId, deviceId, action, timestampMs (int64 unix-ms),
+//	nonce, params (raw JSON), hmac (64-char lowercase hex)
+//
+// The Go server signs this struct before sending it to the device; the
+// device validates it on receipt against its locally-stored command_secret.
+type commandFrame struct {
+	TransactionID string          `json:"transactionId"`
+	DeviceID      string          `json:"deviceId"`
+	Action        string          `json:"action"`
+	TimestampMs   int64           `json:"timestampMs"`
+	Nonce         string          `json:"nonce"`
+	Params        json.RawMessage `json:"params,omitempty"`
+	HMAC          string          `json:"hmac"`
 }
 
-type commandResponse struct {
-	DispatchID string `json:"dispatchId"`
-	Delivery   string `json:"delivery"` // "sent" if WSS delivered, "queued" if held for next FCM wake
-	ServerTime int64  `json:"serverTime"`
+// dashboardCommandRequest is the body the dashboard POSTs to the server to
+// instruct it to forward a command. The dashboard does NOT see the device's
+// command_secret — the server signs on the dashboard's behalf
+// (DEVICE_REGISTRATION.md §5). For the mock, "dashboard auth" is a Bearer
+// token (-dashboard-token); the real server uses a session cookie.
+type dashboardCommandRequest struct {
+	Action string          `json:"action"`
+	Params json.RawMessage `json:"params,omitempty"`
 }
 
+type dashboardCommandResponse struct {
+	TransactionID string `json:"transactionId"`
+	DispatchID    string `json:"dispatchId"`
+	Delivery      string `json:"delivery"` // "sent" if WSS delivered, "queued" if held for FCM
+	ServerTime    int64  `json:"serverTime"`
+}
+
+// handleDeviceCommand is the dashboard-facing endpoint. The dashboard
+// authenticates with a session cookie / token, the server signs a
+// CommandFrame on its behalf, and forwards the frame to the device.
+//
+// The frame embeds an HMAC computed against the canonical message:
+//
+//	{transactionId}|{deviceId}|{action}|{timestampMs}|{nonce}|{params}
+//
+// using HMAC-SHA256 with the device's per-device command_secret. Per
+// COMMAND_SECURITY.md §3 and §5.
 func (s *server) handleDeviceCommand(w http.ResponseWriter, r *http.Request, deviceID string) {
-	body, ok := s.requireHMAC(w, r)
+	if !s.requireDashboardAuth(w, r) {
+		return
+	}
+	body, ok := readBody(w, r)
 	if !ok {
 		return
 	}
-	var req commandRequest
+	var req dashboardCommandRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_json", err.Error())
 		return
 	}
-	if req.Command == "" {
-		writeError(w, http.StatusBadRequest, "missing_field", "command is required")
+	if req.Action == "" {
+		writeError(w, http.StatusBadRequest, "missing_field", "action is required")
 		return
 	}
-	if _, found := s.store.get(deviceID); !found {
+	secret, found := s.store.commandSecret(deviceID)
+	if !found {
 		writeError(w, http.StatusNotFound, "unknown_device", deviceID)
 		return
 	}
 
 	now := time.Now()
-	dispatchID := newDispatchID(now)
-
-	// Try to deliver over an open WSS first. If the device is offline, queue
-	// the command in memory; the real server would also fire an FCM wake here.
 	frame := commandFrame{
-		Type:       "command",
-		DispatchID: dispatchID,
-		Command:    req.Command,
-		Args:       req.Args,
-		Nonce:      req.Nonce,
-		Timestamp:  req.Timestamp,
-		Signature:  req.Signature,
+		TransactionID: newTransactionID(),
+		DeviceID:      deviceID,
+		Action:        req.Action,
+		TimestampMs:   now.UnixMilli(),
+		Nonce:         newNonce(),
+		Params:        req.Params,
 	}
+	canonical := buildCommandFrameCanonical(&frame)
+	frame.HMAC = signCanonicalHex(secret, canonical)
+
 	delivered := s.store.dispatch(deviceID, frame)
 	delivery := "queued"
 	if delivered {
 		delivery = "sent"
 	}
 
+	dispatchID := newDispatchID(now)
 	s.log.Info("command dispatched",
 		"deviceId", deviceID,
-		"command", req.Command,
+		"action", req.Action,
+		"transactionId", frame.TransactionID,
 		"dispatchId", dispatchID,
 		"delivery", delivery,
 	)
 
-	writeJSON(w, http.StatusAccepted, commandResponse{
-		DispatchID: dispatchID,
-		Delivery:   delivery,
-		ServerTime: now.UnixMilli(),
+	writeJSON(w, http.StatusAccepted, dashboardCommandResponse{
+		TransactionID: frame.TransactionID,
+		DispatchID:    dispatchID,
+		Delivery:      delivery,
+		ServerTime:    now.UnixMilli(),
 	})
 }
 
-// commandFrame is the wire-format pushed to the device over WSS.
-type commandFrame struct {
-	Type       string          `json:"type"` // always "command"
-	DispatchID string          `json:"dispatchId"`
-	Command    string          `json:"command"`
-	Args       json.RawMessage `json:"args,omitempty"`
-	Nonce      string          `json:"nonce"`
-	Timestamp  int64           `json:"timestamp"`
-	Signature  string          `json:"signature,omitempty"`
+// newTransactionID returns an opaque transaction identifier for a single
+// CommandFrame. 16 random bytes hex-encoded is enough to make accidental
+// collisions effectively impossible — same shape as the device-side IDs in
+// COMMAND_SECURITY.md §2.
+func newTransactionID() string {
+	return randomHex(16, "tx")
+}
+
+// newNonce returns the 16-byte hex nonce embedded in the CommandFrame. The
+// nonce cache in COMMAND_SECURITY.md §4 dedups against this.
+func newNonce() string {
+	return randomHex(16, "n")
+}
+
+func randomHex(n int, fallbackPrefix string) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		// /dev/urandom hiccup — fall back to a time-based ID rather than
+		// crashing the server.
+		return fmt.Sprintf("%s-%d", fallbackPrefix, time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }

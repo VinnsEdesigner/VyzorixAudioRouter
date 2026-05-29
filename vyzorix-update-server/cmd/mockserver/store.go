@@ -11,10 +11,18 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// defaultMockSecret is the deterministic command_secret returned to every
-// registration. Matches the CI bypass mode in doc/CI_CD_WORKFLOWS.md so the
-// Android side can opt in to bypass behaviour without environment hopping.
+// defaultMockSecret is the deterministic command_secret stored on every
+// device record by default. Matches the CI bypass mode in
+// doc/CI_CD_WORKFLOWS.md so the Android side can opt in to bypass behaviour
+// without environment hopping. Mock-grade: the real server generates a
+// fresh per-device secret at registration (DEVICE_REGISTRATION.md §6).
 const defaultMockSecret = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// defaultFleetToken is the deterministic fleet_registration_token enforced on
+// POST /v1/device/register. Real APKs would bake a fleet token in at build
+// time per DEVICE_REGISTRATION.md §3.1; the mock uses a fixed value so tests
+// and the device-side bootstrap can share the same string.
+const defaultFleetToken = "mock-fleet-registration-token"
 
 var errHijackAttempt = errors.New("device_id already registered to a different firebaseInstallId")
 
@@ -24,6 +32,7 @@ type device struct {
 	FCMToken          string
 	AppVersion        string
 	DeviceClass       string
+	CommandSecret     string
 	RegisteredAt      time.Time
 	LastSeen          time.Time
 }
@@ -71,11 +80,26 @@ func (s *store) register(req registerRequest, now time.Time) (*device, error) {
 		FCMToken:          req.FCMToken,
 		AppVersion:        req.AppVersion,
 		DeviceClass:       req.DeviceClass,
+		CommandSecret:     s.mockSecret,
 		RegisteredAt:      now,
 		LastSeen:          now,
 	}
 	s.devices[req.DeviceID] = dev
 	return dev, nil
+}
+
+// commandSecret returns the per-device command_secret used to validate
+// signed messages. Mock implementation: every device shares -mock-secret;
+// the real server keeps a distinct secret per device in a file-backed
+// secret store (DEVICE_REGISTRATION.md §6.1).
+func (s *store) commandSecret(deviceID string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, ok := s.devices[deviceID]
+	if !ok {
+		return "", false
+	}
+	return d.CommandSecret, true
 }
 
 func (s *store) get(deviceID string) (*device, bool) {
@@ -85,7 +109,7 @@ func (s *store) get(deviceID string) (*device, bool) {
 	return d, ok
 }
 
-func (s *store) updateFCMToken(deviceID, token string) bool {
+func (s *store) updateFCMToken(deviceID, token string, now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	d, ok := s.devices[deviceID]
@@ -93,7 +117,7 @@ func (s *store) updateFCMToken(deviceID, token string) bool {
 		return false
 	}
 	d.FCMToken = token
-	d.LastSeen = time.Now()
+	d.LastSeen = now
 	return true
 }
 
@@ -183,7 +207,15 @@ func (s *store) closeAllWebSockets() {
 }
 
 // rememberNonce records a nonce as seen at `now`. Returns false if the nonce
-// is already in the cache (replay attempt).
+// is already in the cache (replay attempt). TTL = 5 minutes per
+// COMMAND_SECURITY.md §4 (timestamp window is ±30s; nonce cache keeps an
+// extra safety margin).
+//
+// Mock-grade: this is a flat map with opportunistic GC, no LRU cap, no
+// distributed dedup. The canonical implementation per COMMAND_SECURITY.md
+// §4 is a thread-safe LinkedHashMap with a 200-entry cap, LRU eviction, and
+// (in production) shared state across server replicas. See the mock-server
+// README for the deviation rationale.
 func (s *store) rememberNonce(nonce string, now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -191,8 +223,7 @@ func (s *store) rememberNonce(nonce string, now time.Time) bool {
 		return false
 	}
 	s.nonces[nonce] = now
-	// Opportunistic GC: drop anything outside the 5-min HMAC window.
-	cutoff := now.Add(-5 * time.Minute)
+	cutoff := now.Add(-nonceCacheTTL)
 	for k, t := range s.nonces {
 		if t.Before(cutoff) {
 			delete(s.nonces, k)
@@ -200,6 +231,8 @@ func (s *store) rememberNonce(nonce string, now time.Time) bool {
 	}
 	return true
 }
+
+const nonceCacheTTL = 5 * time.Minute
 
 // wsRegistration is the device-side view of a registered socket.
 type wsRegistration struct {
