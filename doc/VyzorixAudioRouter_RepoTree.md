@@ -797,39 +797,46 @@ VyzorixAudioRouter/
 │                                                          # persisted across restarts (stale after 5min anyway)
 
 
-├── docs/                                                  # Documentation (docs/ not doc/ — keep consistent)
-│   ├── ARCHITECTURE.md
-│   ├── NOKIA_C22_NOTES.md
-│   ├── ACCESSIBILITY_FLOW.md
-│   ├── MEDIA_PROJECTION_FLOW.md
-│   ├── VOIP_ROUTE_FORCE.md
-│   ├── SOFT_REBOOT_ANALYSIS.md
-│   ├── LATENCY_TUNING.md
-│   ├── NOKIA_C22_ROUTE_BEHAVIOR.md
-│   ├── SERVICE_LIFECYCLE.md
-│   ├── RECOVERY_MATRIX.md
-│   ├── ACCESSIBILITY_AUTOMATION_RULES.md
-│   ├── PROJECTION_EDGE_CASES.md
-│   ├── NOTIFICATION_DASHBOARD.md
-│   ├── UPDATE_MECHANISM.md
-│   ├── A13_RESTRICTIONS.md
-│   ├── ACCESSIBILITY_LIMITATIONS.md
-│   ├── MEDIA_PROJECTION_LIMITATIONS.md
-│   ├── OEM_KILL_POLICIES.md
-│   ├── MEMORY_PRESSURE_STRATEGY.md
-│   ├── AUTOMATION_SAFETY.md
-│   ├── THREADING_MODEL.md
-│   ├── FEATURES.md                                        # Updated: HMAC signing + FCM result queue added to arch diagram, §3.1 command catalog, §3.2 JSON schema, §5.1 FCM lifecycle
-│   ├── COMMAND_SECURITY.md                                #  Full HMAC signing spec, nonce format, timestamp window, replay cache, key establishment flow
-│   ├── CI_CD_WORKFLOWS.md
-│   ├── DOC_1_BOOTSTRAP_AND_ORCHESTRATION.md
-│   ├── DOC_2_ACCESSIBILITY_AND_AUTOMATION_GOVERNANCE.md
-│   ├── DOC_3_AUDIO_PIPELINE_AND_VOIP_EXEMPTIONS.md
-│   ├── DOC_4_RESILIENCE_FALLBACKS_AND_RECOVERY.md
-│   ├── DOC_5_DIAGNOSTICS_CRASH_FORENSICS_AND_STORAGE.md
-│   ├── DOC_6_MEMORY_PERFORMANCE_AND_HARDWARE_MONITORING.md
-│   ├── DOC_7_DATA_SECURITY_AND_PERSISTENCE.md
-│   └── DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md     # Updated: HMAC signing layer in §1 flow diagram, PendingResultQueue in §4 websocket submodule, FCM wake result flow new §6, extended wake lock in §3.5, nonce+hmac in §5.2 JSON schema
+├── doc/                                                   # Documentation root. README.md is the entry point.
+│   ├── README.md                                          # Doc index with the Phase 1 / 1.5 / 2 / 3 phase table and links to every doc below
+│   ├── NAMING_RENAMES.md                                  # Canonical class rename table (read first if grepping for old names)
+│   ├── GLOSSARY.md                                        # ~35 project-specific terms (route war, soft reboot, idle pause, daemon, three-layer health…)
+│   ├── SYSTEM_MAP.md                                      # Master reference — startup sequence, service interaction matrix, failure matrix, thread model, lifecycle graphs, permission matrix, three-layer health architecture
+│   ├── BUILD_ORDER.md                                     # Phase 1 layered build sequence (Layers 0–8, mock-first)
+│   ├── DOC_1_BOOTSTRAP_AND_ORCHESTRATION.md               # Canonical: application startup, services, foreground service lifecycle
+│   ├── DOC_2_ACCESSIBILITY_AND_AUTOMATION_GOVERNANCE.md   # Canonical: accessibility service, automation governance
+│   ├── DOC_3_AUDIO_PIPELINE_AND_VOIP_EXEMPTIONS.md        # Canonical: audio routing, VoIP exemption, MediaProjection (deep-dives: VOIP_ROUTE_FORCE, MEDIA_PROJECTION_FLOW)
+│   ├── DOC_4_RESILIENCE_FALLBACKS_AND_RECOVERY.md         # Canonical: recovery ladder, RecoveryCoordinator (Layer A), safe mode
+│   ├── DOC_5_DIAGNOSTICS_CRASH_FORENSICS_AND_STORAGE.md   # Canonical: observer fleet, log bundles (deep-dive: SOFT_REBOOT_ANALYSIS)
+│   ├── DOC_6_MEMORY_PERFORMANCE_AND_HARDWARE_MONITORING.md # Canonical: health signals (Layer B), thermal, memory pressure
+│   ├── DOC_7_DATA_SECURITY_AND_PERSISTENCE.md             # Canonical: DeviceSecretStore (§3.9), C2 secret storage flow (§1.1), SQLCipher (per ADR-0004)
+│   ├── DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md     # Canonical: C2 stack (HMAC signing layer §1, PendingResultQueue §4, FCM wake result flow §6, extended wake lock §3.5, nonce+hmac §5.2) — deep-dives: COMMAND_SECURITY, DEVICE_REGISTRATION, UPDATE_MECHANISM, UPDATE_SERVER, UPDATE_SERVER_ARCHITECTURE_SPEC
+│   ├── MEDIA_PROJECTION_FLOW.md                           # Deep-dive of DOC_3: IdleCaptureController + ProjectionDeathHandler specs
+│   ├── VOIP_ROUTE_FORCE.md                                # Deep-dive of DOC_3: route war strategy + MODE_IN_COMMUNICATION exemption
+│   ├── SOFT_REBOOT_ANALYSIS.md                            # Deep-dive of DOC_5: soft-reboot failure model + "why the observer fleet exists" (per ADR-0002)
+│   ├── COMMAND_SECURITY.md                                # Deep-dive of DOC_8: HMAC spec, nonce format, timestamp window, replay cache, key establishment, threat model (personal-deployment / defense-in-depth-for-future-scaling)
+│   ├── DEVICE_REGISTRATION.md                             # Deep-dive of DOC_8: server-side device lifecycle (registration, token refresh, online/offline, deregistration), REST contract. Auto-synced to vyzorix-update-server/doc/
+│   ├── NOTIFICATION_DASHBOARD.md                          # Deep-dive of DOC_1: Tier 1/2/3 expandable notification, data source from DaemonStatusAggregator (ADR-0007)
+│   ├── DEVICE_QUIRK_PROFILES.md                           # DeviceQuirkProfile schema + how to add a new device (per ADR-0008)
+│   ├── NOKIA_C22_NOTES.md                                 # Populates NokiaC22Profile in the DeviceQuirkProfile system: Unisoc SC9863A scheduler trap, ALSA timing, TEE fallback
+│   ├── UPDATE_MECHANISM.md                                # Deep-dive of DOC_8: Android-side OTA flow (UpdateChecker, UpdateDownloader, UpdateInstaller)
+│   ├── UPDATE_SERVER.md                                   # Deep-dive of DOC_8: server endpoints, UptimeRobot keepalive, Render cold-start mitigation
+│   ├── UPDATE_SERVER_ARCHITECTURE_SPEC.md                 # Deep-dive of DOC_8: internal Go server architecture (file-by-file)
+│   ├── FEATURES.md                                        # Feature reference: HMAC signing + FCM result queue arch diagram, §3.1 command catalog, §3.2 JSON schema, §5.1 FCM lifecycle
+│   ├── CI_CD_WORKFLOWS.md                                 # CI workflows incl. command_secret bypass for fresh CI installs + mock-server integration test
+│   ├── VyzorixAudioRouter_RepoTree.md                     # This file — authoritative Android-side file list
+│   ├── VyzorixUpdate_RepoTree.md                          # Authoritative server-side file list (vyzorix-update-server)
+│   └── adr/                                               # Architecture decision records (read before re-litigating design choices)
+│       ├── README.md                                      # ADR index + how to add a new ADR
+│       ├── 0001-c2-stack-rationale.md                     # Why HMAC-SHA256 + per-device secret + nonce cache for a personal deployment
+│       ├── 0002-observer-fleet-as-measurement-instrument.md # Why the 15+ observers are NOT over-engineering — they are a measurement instrument
+│       ├── 0003-go-server-vs-firebase-functions.md        # Why a custom Go server over Firebase Functions
+│       ├── 0004-sqlcipher-full-db-vs-encrypted-columns.md # Why SQLCipher full-DB over encrypted columns only
+│       ├── 0005-websocket-plus-fcm-dual-channel.md        # Why dual-channel (WSS commands + FCM wake) instead of one or the other
+│       ├── 0006-projection-death-handler-separate-from-token-manager.md # Why ProjectionDeathHandler stays separate from ProjectionTokenManager
+│       ├── 0007-three-layer-health-monitoring.md          # B-signal / C-aggregator / A-coordinator (replaces 11 health classes)
+│       ├── 0008-device-quirk-profile-system.md            # DeviceQuirkProfile runtime abstraction (NokiaC22Profile + UnknownDeviceProfile)
+│       └── 0009-phase-1-mock-first.md                     # Phase 1 mock-first reframing (resolves Layer 8 chicken-and-egg)
 │
 ├── scripts/
 │   ├── build_debug.sh

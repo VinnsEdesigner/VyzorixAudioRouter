@@ -1,6 +1,6 @@
 # DEVICE_REGISTRATION.md — Server-Side Device Lifecycle (deep-dive of DOC_8)
 
-> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md).** DOC_8 is the canonical spec for the C2 stack; this document covers the server-side device lifecycle in implementation-level detail.
+> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md).** DOC_8 is the canonical spec for the C2 stack; this document covers the server-side device lifecycle in implementation-level detail.
 
 > **Repo scope:** This document is authored in `VyzorixAudioRouter/doc/` and auto-synced to `vyzorix-update-server/doc/` by the `sync_repo.yml` workflow. It describes the **server side** of the device registration / lifecycle flow. The device-side counterpart lives in `COMMAND_SECURITY.md` (HMAC contract) and `DOC_7_DATA_SECURITY_AND_PERSISTENCE.md` (storage).
 

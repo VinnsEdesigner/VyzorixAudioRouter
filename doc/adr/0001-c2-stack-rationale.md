@@ -50,7 +50,7 @@ Commands are authenticated with HMAC-SHA256 over a per-device shared secret (`co
 
 **Opened up:**
 - Multi-device scaling: the architecture supports any number of devices without redesign. Even though the current use case is one device, the C2 stack is the infrastructure that lets this expand later without a rewrite.
-- Defense-in-depth security posture: even though the threat model is currently personal-deployment, the HMAC + nonce + per-device secret design is appropriate for adversarial environments. See ADR-0010 (future) when key rotation is added.
+- Defense-in-depth security posture: even though the threat model is currently personal-deployment, the HMAC + nonce + per-device secret design is appropriate for adversarial environments. A future ADR will cover key rotation when that work is scheduled (Phase 3 hardening, not blocking the current build).
 
 ## References
 
