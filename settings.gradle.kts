@@ -29,3 +29,6 @@ project(":core:common").projectDir = file("core/common")
 
 include(":core:data")
 project(":core:data").projectDir = file("core/data")
+
+include(":core:audioengine")
+project(":core:audioengine").projectDir = file("core/audioengine")

@@ -269,6 +269,7 @@ VyzorixAudioRouter/
 │   │               └── CrashBundleMigration.kt            # Log schema evolution handling
 │   │
 │   ├── audioengine/                                       # Native C++ processing module — depends only on core/common
+│   │                                                      # [LAYER 2 LANDED — PR #9; on-device sine-wave round-trip pending Nokia C22]
 │   │   ├── build.gradle.kts
 │   │   └── src/main/
 │   │       ├── AndroidManifest.xml

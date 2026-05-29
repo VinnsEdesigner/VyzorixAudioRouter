@@ -1,0 +1,39 @@
+#define __VYZORIX_LOG_TAG "VyzorixAudio.Fallback"
+#include "ring_buffer.h"
+#include "playback_resampler.h"
+#include "underrun_guard.h"
+#include "logger_engine.h"
+
+#include <algorithm>
+#include <cstring>
+
+namespace vyzorix {
+namespace audio {
+
+/// Drain `frames_requested` frames from the capture ring buffer into `dst`,
+/// filling any short read with comfort noise.
+///
+/// This is the *fallback* path — the steady-state pipeline in Layer 3+ will
+/// avoid the comfort-noise injection by sizing AudioTrack writes to the
+/// instantaneous ring-buffer fill; if the ring buffer is empty here the
+/// upstream Java pipeline crashed or hung and we'd rather emit comfort noise
+/// than silence (silence on the speaker is the failure signature that
+/// motivated this whole project).
+std::size_t fallback_read_with_comfort_noise(
+    CaptureRingBuffer*  rb,
+    UnderrunGuardState* guard,
+    sample_t*           dst,
+    std::size_t         frames_requested) {
+    if (rb == nullptr || guard == nullptr || dst == nullptr || frames_requested == 0) {
+        return 0;
+    }
+    const std::size_t got = ring_buffer_read(rb, dst, frames_requested);
+    if (got < frames_requested) {
+        const std::size_t missing = frames_requested - got;
+        underrun_guard_fill_comfort_noise(guard, dst + got, missing);
+    }
+    return frames_requested;
+}
+
+}  // namespace audio
+}  // namespace vyzorix
