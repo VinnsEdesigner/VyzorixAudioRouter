@@ -244,10 +244,16 @@ VyzorixAudioRouter/
 │   │           │   ├── PermissionGrantRecord.kt           # @Entity for permission history
 │   │           │   └── UpdateRecord.kt                    # @Entity for update download/install tracking
 │   │           ├── repository/
-│   │           │   ├── StateRepository.kt                 # Unified data access layer
+│   │           │   ├── StateRepository.kt                 # Unified read-side facade across the five tables
+│   │           │   ├── DaemonStateRepository.kt           # CRUD for daemon_state snapshots
 │   │           │   ├── CrashEventRepository.kt            # CRUD for crash logs
 │   │           │   ├── RouteHistoryRepository.kt          # CRUD for route history
-│   │           │   └── UpdateRepository.kt                # CRUD for update state and history
+│   │           │   ├── PermissionGrantRepository.kt       # CRUD for permission grants
+│   │           │   └── UpdateRepository.kt                # CRUD for update state and history (no clear() — forensic log)
+│   │           ├── extensions/
+│   │           │   └── RoomCursorExtensions.kt            # Typed cursor decoders for CrashEvent / RouteHistoryEntry;
+│   │           │                                          # lives in core/data because the entity types are owned here
+│   │           │                                          # (core/common cannot depend forward on Layer 1 entity types)
 │   │           ├── datastore/
 │   │           │   ├── SettingsDataStore.kt               # Proto/DataStore configuration persistence
 │   │           │   ├── RuntimeFlagsStore.kt               # Dynamic feature flags

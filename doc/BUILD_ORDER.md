@@ -89,21 +89,26 @@ Each layer below has: scope, files compiled, files explicitly stubbed-only, what
 
 ---
 
-## Layer 1 — `core/data`  *(landed in PR #7)*
+## Layer 1 — `core/data`  *(landed in PR #7 + PR #8)*
 
-**Status:** Implementation merged. JVM coverage in `:core:common:testDebugUnitTest` + `:core:data:testDebugUnitTest`. On-device acceptance still pending — see "On-device verification" below.
+**Status:** Implementation merged. PR #7 landed the skeleton (Room + SQLCipher + `KeystoreManager` impl + `DeviceSecretStore`); PR #8 closed the gaps against `doc/VyzorixAudioRouter_RepoTree.md` (renamed `*Entity` → canonical names, added `route_history` + `permission_grants` tables, added `Settings/RuntimeFlags/ProjectionMetadata` DataStores, added `LegacyPrefs` + `CrashBundle` migrations, bumped `AppDatabase.VERSION` to 2 with `MIGRATION_1_2`) and backfilled the Layer 0 Android-API surface (`extensions/`, `audio/`, `logging/`) that was only implementable once `:core:common` became an Android library. JVM coverage in `:core:common:testDebugUnitTest` + `:core:data:testDebugUnitTest`. On-device acceptance still pending — see "On-device verification" below.
 
 **Scope:** Room + SQLCipher persistence, plus encrypted DataStore for the C2 secret. Fills in the Android-bound parts of `KeystoreManager`. No services yet.
 
 **Compiles (full implementation):**
-- `core/data/database/` — `AppDatabase.kt`, `SecureSupportHelper.kt`, `AppDatabaseMigrations.kt`, `CryptoHelper.kt`.
-- `core/data/dao/` — `DaemonStateDao`, `CrashEventDao`, `UpdateStateDao`, etc.
-- `core/data/entity/` — Room entities.
-- `core/data/converters/` — Room `TypeConverter`s.
-- `core/data/repository/` — Repositories that wrap DAOs.
-- `core/data/datastore/DeviceSecretStore.kt` — encrypted DataStore for `command_secret` (uses `TokenEncryptor` via `KeystoreManager`). Note: the C2 *consumers* (`CommandHmacValidator`, `FcmTokenManager`) are in Layer 8; `DeviceSecretStore` itself lives here in Layer 1 because it is purely a persistence concern.
+- `core/data/database/` — `AppDatabase.kt` (v2), `SecureSupportHelper.kt`, `AppDatabaseMigrations.kt` (MIGRATION_1_2), `CryptoHelper.kt`.
+- `core/data/dao/` — `DaemonStateDao`, `CrashEventDao`, `UpdateStateDao`, `RouteHistoryDao`, `PermissionGrantDao`.
+- `core/data/entity/` — `DaemonStateSnapshot`, `CrashEvent`, `UpdateRecord`, `RouteHistoryEntry`, `PermissionGrantRecord` (last two carry their own `AudioRouteKind` / `RouteTransitionReason` / `PermissionOutcome` enums — storage-shape concerns kept out of `core/common`).
+- `core/data/converters/` — Room `TypeConverter`s: `DateTime`, `DaemonState`, `CrashEvent`, `UpdateState`, `AudioRoute`, `PermissionGrant`.
+- `core/data/repository/` — `DaemonStateRepository`, `CrashEventRepository`, `UpdateRepository`, `RouteHistoryRepository`, `PermissionGrantRepository`, plus the unified `StateRepository` read-side facade.
+- `core/data/datastore/` — `DeviceSecretStore` (encrypted, DOC_7 §3.9), `SettingsDataStore`, `RuntimeFlagsStore`, `ProjectionMetadataStore` + their `*Factory` wrappers.
+- `core/data/migrations/` — `LegacyPrefsMigration` (SharedPreferences → DataStore), `CrashBundleMigration` (pre-Room JSON bundles → `crash_events`).
+- `core/data/extensions/` — `RoomCursorExtensions.kt` (typed cursor decoders for `CrashEvent` / `RouteHistoryEntry`; lives in `core/data` because the entity types are owned by this module).
 - `core/common/utils/KeystoreManager.kt` — fill in the implementation (`AndroidKeystoreManager` + `SoftwareKeystoreManager` fallback for Unisoc SC9863A; selected by `KeystoreManagerFactory.create(context, profile)`; see `NOKIA_C22_NOTES.md` for the fallback rationale).
 - `core/common/utils/TokenEncryptor.kt` and `CryptoHelper.kt` — landed alongside `KeystoreManager` in `core/common/utils/` (canonical path updated in `DOC_7_DATA_SECURITY_AND_PERSISTENCE.md` §3.8; earlier draft pointed at `core/services/security/`, which Layer 1 has no reason to materialize).
+- `core/common/extensions/` — Android-API helpers backfilled in PR #8: `AudioManagerExtensions`, `ContextExtensions`, `NotificationExtensions`, `AudioTrackExtensions`, `AccessibilityExtensions`, `CursorExtensions`, `NetworkExtensions`, `ByteArrayExtensions`. (Blocked-by-design until PR #7 migrated `:core:common` to `com.android.library`.)
+- `core/common/audio/` — `AudioBufferPool`, `AudioDeviceUtils`, `RawResourceUriHelper`.
+- `core/common/logging/` — `FileLogger` (disk-backed), `LogcatBridge` (forwards to `android.util.Log`).
 
 **Stubs only:**
 - Any DAO method whose call site is in a later layer can stay unused; do not delete the DAO method just because nothing calls it yet.
