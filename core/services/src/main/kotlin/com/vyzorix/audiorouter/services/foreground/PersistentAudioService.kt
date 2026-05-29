@@ -13,6 +13,17 @@
 //   3. SilentVoipSession.start() — push silent frames as the anchor
 //   4. RoutePersistenceDaemon — start the drift watchdog
 //
+// Layer 3.5 (this revision) adds:
+//   - WakeLockGuard handed to SpeakerForceManager so PARTIAL_WAKE_LOCK is
+//     held only while the engine is engaged.
+//   - DaemonStorageProvider + DaemonStateRecorder so SpeakerForceManager
+//     can persist state transitions for forensics.
+//   - DaemonLogger installed as the process-wide FileLogger so all daemon
+//     output lands in the rolling 2 MiB log files that the LogExportReceiver
+//     can later bundle.
+//   - VendorRouteResetter is injected into RoutePersistenceDaemon so the
+//     HEADSET_HIJACK storm can escalate to HAL reset.
+//
 // Lifecycle:
 //   onCreate — instantiate all sub-systems but DON'T touch AudioManager.
 //   onStartCommand — promote to foreground, then call DaemonLifecycleManager.start().
@@ -27,10 +38,15 @@ import android.os.Build
 import android.os.IBinder
 import com.vyzorix.audiorouter.services.audio.AudioFocusHandler
 import com.vyzorix.audiorouter.services.audio.AudioRouteWatcher
+import com.vyzorix.audiorouter.services.logging.DaemonLogger
 import com.vyzorix.audiorouter.services.managers.AudioRouteManager
 import com.vyzorix.audiorouter.services.managers.DaemonLifecycleManager
 import com.vyzorix.audiorouter.services.managers.SpeakerForceManager
+import com.vyzorix.audiorouter.services.managers.WakeLockGuard
 import com.vyzorix.audiorouter.services.oem.NokiaC22DeviceProfile
+import com.vyzorix.audiorouter.services.oem.VendorRouteResetter
+import com.vyzorix.audiorouter.services.state.DaemonStateRecorder
+import com.vyzorix.audiorouter.services.state.DaemonStorageProvider
 import com.vyzorix.audiorouter.services.voip.CommunicationRouter
 import com.vyzorix.audiorouter.services.voip.RoutePersistenceDaemon
 import com.vyzorix.audiorouter.services.voip.SilentVoipSession
@@ -48,8 +64,12 @@ public class PersistentAudioService : Service() {
     private lateinit var routeManager: AudioRouteManager
     private lateinit var focusHandler: AudioFocusHandler
     private lateinit var routeWatcher: AudioRouteWatcher
+    private lateinit var wakeLockGuard: WakeLockGuard
+    private lateinit var storageProvider: DaemonStorageProvider
+    private lateinit var stateRecorder: DaemonStateRecorder
     private lateinit var speakerForceManager: SpeakerForceManager
     private lateinit var silentVoipSession: SilentVoipSession
+    private lateinit var vendorRouteResetter: VendorRouteResetter
     private lateinit var routePersistenceDaemon: RoutePersistenceDaemon
     private lateinit var lifecycle: DaemonLifecycleManager
     /** Exposed for the dashboard wiring in Layer 5+. */
@@ -58,13 +78,30 @@ public class PersistentAudioService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Install the disk-backed logger first so every subsequent step lands
+        // in the rolling log file the LogExportReceiver will zip.
+        DaemonLogger.install(this)
         profile = NokiaC22DeviceProfile.current()
         routeManager = AudioRouteManager(this)
         focusHandler = AudioFocusHandler(this)
         routeWatcher = AudioRouteWatcher(this)
-        speakerForceManager = SpeakerForceManager(scope, routeManager, profile)
+        wakeLockGuard = WakeLockGuard(this)
+        storageProvider = DaemonStorageProvider(this, profile)
+        stateRecorder = DaemonStateRecorder(scope, storageProvider.daemonStateRepository)
+        speakerForceManager = SpeakerForceManager(
+            scope = scope,
+            routeManager = routeManager,
+            profile = profile,
+            wakeLockGuard = wakeLockGuard,
+            stateRecorder = stateRecorder,
+        )
         silentVoipSession = SilentVoipSession()
-        routePersistenceDaemon = RoutePersistenceDaemon(routeManager, silentVoipSession)
+        vendorRouteResetter = VendorRouteResetter(routeManager, profile)
+        routePersistenceDaemon = RoutePersistenceDaemon(
+            routeManager = routeManager,
+            silentVoipSession = silentVoipSession,
+            vendorRouteResetter = vendorRouteResetter,
+        )
         lifecycle = DaemonLifecycleManager(
             scope = scope,
             focusHandler = focusHandler,

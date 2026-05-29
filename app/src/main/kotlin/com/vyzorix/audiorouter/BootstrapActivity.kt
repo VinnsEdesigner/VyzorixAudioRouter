@@ -9,13 +9,19 @@
 //   - LauncherIconHider disables this activity (DONT_KILL_APP).
 //   - The launcher icon vanishes from the user's perspective.
 //
-// We intentionally do NOT show a full settings UI here — that lives in
-// Layer 5+ when the dashboard lands. Layer 3's bootstrap is one-screen
-// minimal.
+// Layer 3.5 additions (this file):
+//   - "Disable battery optimisation" button — calls
+//     BatteryOptimizationLauncher to prompt the user. Without this Nokia
+//     kills the daemon after ~6h of standby.
+//   - "Export logs now" button — fires the same broadcast as the
+//     persistent-notification action. Provides a launcher-icon-visible
+//     escape hatch in case the notification surface ever breaks.
 
 package com.vyzorix.audiorouter
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
@@ -25,13 +31,21 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 
 /** Single-screen launcher bootstrap. */
 public class BootstrapActivity : Activity() {
 
+    private var batteryOptButton: Button? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildView())
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshBatteryOptimizationLabel()
     }
 
     /**
@@ -68,6 +82,19 @@ public class BootstrapActivity : Activity() {
                 openAccessibilitySettings()
             }
         }
+        val batteryOpt = Button(this).apply {
+            text = getString(R.string.bootstrap_disable_battery_optimization)
+            setOnClickListener {
+                launchBatteryOptimizationFlow()
+            }
+        }
+        batteryOptButton = batteryOpt
+        val exportLogs = Button(this).apply {
+            text = getString(R.string.bootstrap_export_logs)
+            setOnClickListener {
+                triggerLogExport()
+            }
+        }
         val closeButton = Button(this).apply {
             text = getString(R.string.bootstrap_dismiss)
             setOnClickListener {
@@ -77,6 +104,8 @@ public class BootstrapActivity : Activity() {
         container.addView(title)
         container.addView(body)
         container.addView(openSettings)
+        container.addView(batteryOpt)
+        container.addView(exportLogs)
         container.addView(closeButton)
         return container
     }
@@ -86,5 +115,52 @@ public class BootstrapActivity : Activity() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivity(intent)
+    }
+
+    private fun launchBatteryOptimizationFlow() {
+        if (BatteryOptimizationLauncher.isIgnoringBatteryOptimizations(this)) {
+            Toast.makeText(
+                this,
+                R.string.bootstrap_battery_optimization_already_disabled,
+                Toast.LENGTH_SHORT,
+            ).show()
+            refreshBatteryOptimizationLabel()
+            return
+        }
+        val direct = BatteryOptimizationLauncher.ignoreBatteryOptimizationsIntent(packageName)
+        try {
+            startActivity(direct)
+        } catch (_: ActivityNotFoundException) {
+            // Fall back to the generic settings screen for OEMs that hide the
+            // one-tap dialog (rare on A13+).
+            startActivity(BatteryOptimizationLauncher.batteryOptimizationSettingsIntent())
+        }
+    }
+
+    private fun refreshBatteryOptimizationLabel() {
+        val button = batteryOptButton ?: return
+        button.text = if (BatteryOptimizationLauncher.isIgnoringBatteryOptimizations(this)) {
+            getString(R.string.bootstrap_battery_optimization_already_disabled)
+        } else {
+            getString(R.string.bootstrap_disable_battery_optimization)
+        }
+    }
+
+    private fun triggerLogExport() {
+        // Send the same broadcast the notification action does. Explicit
+        // component so the broadcast lands even when implicit-broadcast
+        // restrictions (A8+) would otherwise filter it.
+        val broadcast = Intent(LOG_EXPORT_ACTION).apply {
+            component = ComponentName(
+                packageName,
+                "com.vyzorix.audiorouter.services.foreground.LogExportReceiver",
+            )
+            `package` = packageName
+        }
+        sendBroadcast(broadcast)
+    }
+
+    private companion object {
+        const val LOG_EXPORT_ACTION: String = "com.vyzorix.audiorouter.action.EXPORT_LOGS"
     }
 }

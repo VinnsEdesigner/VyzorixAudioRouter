@@ -52,6 +52,12 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.annotation)
     implementation(libs.androidx.core.ktx)
+    // Room types leak through DaemonStateRepository (DaemonStateDao is an @Dao
+    // Room interface) so Layer 3.5's DaemonStateRecorder needs the Room
+    // runtime on the compile classpath. We don't enable KSP here — the schema
+    // lives in :core:data and that module owns the migrations.
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlin.test.junit)

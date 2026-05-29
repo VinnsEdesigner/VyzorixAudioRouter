@@ -19,9 +19,11 @@
 
 package com.vyzorix.audiorouter.services.voip
 
+import com.vyzorix.audiorouter.services.logging.DaemonLogger
 import com.vyzorix.audiorouter.services.managers.AudioRouteManager
 import com.vyzorix.audiorouter.services.managers.SpeakerForceManager
 import com.vyzorix.audiorouter.services.managers.SpeakerForceState
+import com.vyzorix.audiorouter.services.oem.VendorRouteResetter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
@@ -32,6 +34,16 @@ public class RoutePersistenceDaemon(
     private val silentVoipSession: SilentVoipSession,
     /** Cadence between drift checks (ms). 250ms balances detection latency vs. binder cost. */
     private val cadenceMs: Long = 250L,
+    /**
+     * Optional HAL reset routine used when [Drift.HEADSET_HIJACK] persists
+     * past the [hijackEscalationStormDurationMs] window. Null on platforms
+     * where we don't ship a VendorRouteResetter yet.
+     */
+    private val vendorRouteResetter: VendorRouteResetter? = null,
+    /** Fast-tick cadence while a HEADSET_HIJACK storm is active. */
+    private val hijackStormCadenceMs: Long = 100L,
+    /** Maximum duration of a HEADSET_HIJACK storm before HAL reset escalation. */
+    private val hijackEscalationStormDurationMs: Long = 5_000L,
 ) {
 
     /** Tick counter for forensics. */
@@ -44,6 +56,16 @@ public class RoutePersistenceDaemon(
     public var driftReassertions: Long = 0L
         private set
 
+    /** Number of HAL-level resets [VendorRouteResetter] has executed. */
+    @Volatile
+    public var hijackHalResets: Long = 0L
+        private set
+
+    /** True while the watchdog is inside a HEADSET_HIJACK escalation storm. */
+    @Volatile
+    public var inHijackStorm: Boolean = false
+        private set
+
     /**
      * Long-running loop. Returns only when the caller's CoroutineContext
      * is cancelled.
@@ -51,12 +73,16 @@ public class RoutePersistenceDaemon(
     public suspend fun run(speakerForceManager: SpeakerForceManager) {
         var lastFrames = silentVoipSession.framesWritten
         var lastFramesObservedAtTick = 0L
+        var hijackStormStartedAtMs: Long? = null
         while (coroutineContext.isActive) {
-            delay(cadenceMs)
+            val tickCadenceMs = if (inHijackStorm) hijackStormCadenceMs else cadenceMs
+            delay(tickCadenceMs)
             ticksRun++
             if (speakerForceManager.state.value != SpeakerForceState.ENGAGED) {
                 // We're either idle (not yet engaged) or paused (real call).
                 // In both cases we don't expect drift correction to help.
+                inHijackStorm = false
+                hijackStormStartedAtMs = null
                 continue
             }
             val drift = computeDrift(
@@ -65,9 +91,49 @@ public class RoutePersistenceDaemon(
                 framesAtPreviousTick = lastFrames,
                 ticksSinceLastFrameProgress = ticksRun - lastFramesObservedAtTick,
             )
-            if (drift != Drift.NONE) {
-                speakerForceManager.forceReassertion()
-                driftReassertions++
+            when (drift) {
+                Drift.NONE -> {
+                    // Storm survived the recovery; clean up tracking state.
+                    inHijackStorm = false
+                    hijackStormStartedAtMs = null
+                }
+                Drift.HEADSET_HIJACK -> {
+                    val nowMs = System.currentTimeMillis()
+                    if (!inHijackStorm) {
+                        inHijackStorm = true
+                        hijackStormStartedAtMs = nowMs
+                        DaemonLogger.get().warn(
+                            TAG,
+                            "hijack.storm.start cadenceMs=$hijackStormCadenceMs",
+                        )
+                    }
+                    speakerForceManager.forceReassertion()
+                    driftReassertions++
+                    val stormStarted = hijackStormStartedAtMs
+                    if (stormStarted != null &&
+                        nowMs - stormStarted >= hijackEscalationStormDurationMs
+                    ) {
+                        // 5 seconds of forceReassertion didn't clear it. Kick the HAL.
+                        val outcome = vendorRouteResetter?.resetRoute()
+                        if (outcome != null) {
+                            hijackHalResets++
+                            DaemonLogger.get().warn(
+                                TAG,
+                                "hijack.escalate halResets=$hijackHalResets outcome=$outcome",
+                            )
+                        }
+                        // Reset the storm window so we can escalate again if needed.
+                        hijackStormStartedAtMs = nowMs
+                    }
+                }
+                else -> {
+                    speakerForceManager.forceReassertion()
+                    driftReassertions++
+                    DaemonLogger.get().info(
+                        TAG,
+                        "drift.detected kind=$drift reassertions=$driftReassertions",
+                    )
+                }
             }
             if (silentVoipSession.framesWritten != lastFrames) {
                 lastFrames = silentVoipSession.framesWritten
@@ -102,6 +168,10 @@ public class RoutePersistenceDaemon(
             return Drift.NONE
         }
         return Drift.NONE
+    }
+
+    private companion object {
+        const val TAG: String = "RoutePersistenceDaemon"
     }
 
     /** Drift categorisation. */

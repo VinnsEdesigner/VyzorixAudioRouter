@@ -32,6 +32,7 @@ public object NotificationHelper {
         context: Context,
         contentIntent: PendingIntent?,
         contentText: CharSequence = "Vyzorix daemon active",
+        actions: List<Notification.Action> = emptyList(),
     ): Notification {
         val builder = Notification.Builder(context, NotificationConstants.CHANNEL_DAEMON)
             .setContentTitle("Vyzorix")
@@ -42,6 +43,9 @@ public object NotificationHelper {
             .setShowWhen(false)
         if (contentIntent != null) {
             builder.setContentIntent(contentIntent)
+        }
+        for (action in actions) {
+            builder.addAction(action)
         }
         return builder.build()
     }

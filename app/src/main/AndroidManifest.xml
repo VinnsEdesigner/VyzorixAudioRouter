@@ -27,6 +27,16 @@
     <!-- A13+ runtime permission for posting the foreground notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- PARTIAL_WAKE_LOCK keeps the CPU awake while the SpeakerForceEngine
+         tick loop is engaged. Without it the 500ms cadence drifts past 1s on
+         AGGRESSIVE-restriction OEMs like Nokia (Evenwell). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Lets BootstrapActivity launch the system "Battery optimisation" prompt
+         so the user can whitelist Vyzorix in one tap. Without the whitelist
+         Nokia kills the daemon within ~6 hours of standby. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:name=".VyzorixApplication"
         android:label="VyzorixAudioRouter"

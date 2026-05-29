@@ -6,6 +6,7 @@ import com.vyzorix.audiorouter.common.device.profiles.NokiaC22Profile
 import com.vyzorix.audiorouter.services.managers.AudioRouteManager
 import com.vyzorix.audiorouter.services.managers.AudioRouteSnapshot
 import com.vyzorix.audiorouter.services.oem.NokiaC22DeviceProfile
+import com.vyzorix.audiorouter.services.oem.UnisocPlatformTweaks
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -76,13 +77,27 @@ class SpeakerForceEngineTest {
         override fun assertBuiltinSpeaker(): Boolean = true
     }
 
-    private fun newEngine(routeManager: AudioRouteManager, testScope: kotlinx.coroutines.CoroutineScope): SpeakerForceEngine =
-        SpeakerForceEngine(
+    /**
+     * UnisocPlatformTweaks subclass that disables the SCHED_FIFO fallback
+     * throttle so tests can use the profile's nominal cadence without being
+     * surprised by the 2x doubling that fires in production whenever the
+     * profile reports SILENT_FALLBACK scheduler behaviour.
+     */
+    private class NoThrottleUnisocTweaks(profile: NokiaC22DeviceProfile) :
+        UnisocPlatformTweaks(profile) {
+        override fun fallbackTickCadenceMs(defaultCadenceMs: Long): Long = defaultCadenceMs
+    }
+
+    private fun newEngine(routeManager: AudioRouteManager, testScope: kotlinx.coroutines.CoroutineScope): SpeakerForceEngine {
+        val profile = NokiaC22DeviceProfile.forTesting(NokiaC22Profile)
+        return SpeakerForceEngine(
             scope = testScope,
             routeManager = routeManager,
-            profile = NokiaC22DeviceProfile.forTesting(NokiaC22Profile),
+            profile = profile,
             communicationDeviceSelector = StubBuiltinSpeakerSelector(routeManager),
+            unisocTweaks = NoThrottleUnisocTweaks(profile),
         )
+    }
 
     @Test
     fun `engine performs an immediate reassertion on start before the first tick`() = runTest {

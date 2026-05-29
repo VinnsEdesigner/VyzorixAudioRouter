@@ -12,7 +12,11 @@
 
 package com.vyzorix.audiorouter.services.managers
 
+import com.vyzorix.audiorouter.common.enums.DaemonState
+import com.vyzorix.audiorouter.common.enums.RouteState
+import com.vyzorix.audiorouter.services.logging.DaemonLogger
 import com.vyzorix.audiorouter.services.oem.NokiaC22DeviceProfile
+import com.vyzorix.audiorouter.services.state.DaemonStateRecorder
 import com.vyzorix.audiorouter.services.voip.AudioModeKeeper
 import com.vyzorix.audiorouter.services.voip.SpeakerForceEngine
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +42,8 @@ public class SpeakerForceManager(
     private val scope: CoroutineScope,
     private val routeManager: AudioRouteManager,
     private val profile: NokiaC22DeviceProfile,
+    private val wakeLockGuard: WakeLockGuard? = null,
+    private val stateRecorder: DaemonStateRecorder? = null,
     private val engineFactory: (
         scope: CoroutineScope,
         routeManager: AudioRouteManager,
@@ -76,7 +82,13 @@ public class SpeakerForceManager(
                 keeper = newKeeper
                 engineJob = newEngine.start()
                 keeperJob = newKeeper.start()
+                wakeLockGuard?.acquire()
                 _state.value = SpeakerForceState.ENGAGED
+                stateRecorder?.record(
+                    daemonState = DaemonState.RUNNING,
+                    routeState = RouteState.SPEAKER_FORCED,
+                )
+                DaemonLogger.get().info(TAG, "engage state=ENGAGED wakelock=${wakeLockGuard?.isHeld() == true}")
             }
         }
     }
@@ -90,7 +102,13 @@ public class SpeakerForceManager(
         engine = null
         keeper = null
         routeManager.disengageVoipSpeakerRoute()
+        wakeLockGuard?.release()
         _state.value = SpeakerForceState.IDLE
+        stateRecorder?.record(
+            daemonState = DaemonState.STOPPED,
+            routeState = RouteState.UNKNOWN,
+        )
+        DaemonLogger.get().info(TAG, "disengage state=IDLE")
     }
 
     /**
@@ -103,6 +121,11 @@ public class SpeakerForceManager(
         engine?.pause()
         keeper?.pause()
         _state.value = SpeakerForceState.PAUSED_FOR_FOCUS
+        stateRecorder?.record(
+            daemonState = DaemonState.RECOVERING,
+            routeState = RouteState.UNKNOWN,
+        )
+        DaemonLogger.get().info(TAG, "pauseForFocusLoss state=PAUSED_FOR_FOCUS")
     }
 
     /** Resume from [pauseForFocusLoss]. Immediately re-asserts the route. */
@@ -111,6 +134,11 @@ public class SpeakerForceManager(
         engine?.resume()
         keeper?.resume()
         _state.value = SpeakerForceState.ENGAGED
+        stateRecorder?.record(
+            daemonState = DaemonState.RUNNING,
+            routeState = RouteState.SPEAKER_FORCED,
+        )
+        DaemonLogger.get().info(TAG, "resume state=ENGAGED")
     }
 
     /**
@@ -119,5 +147,9 @@ public class SpeakerForceManager(
      */
     public fun forceReassertion() {
         engine?.forceReassertNow()
+    }
+
+    private companion object {
+        const val TAG: String = "SpeakerForceManager"
     }
 }
