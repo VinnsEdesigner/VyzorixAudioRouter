@@ -9,6 +9,7 @@ on:
       - 'gradle.properties'
       - 'gradlew'
       - 'gradlew.bat'
+      - 'core/**'
       - '.github/workflows/android-ci.yml'
   push:
     branches: [main]
@@ -19,6 +20,7 @@ on:
       - 'gradle.properties'
       - 'gradlew'
       - 'gradlew.bat'
+      - 'core/**'
       - '.github/workflows/android-ci.yml'
 
 concurrency:
@@ -38,18 +40,56 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 platform-tools'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
       - name: Assemble :core:common
-        run: ./gradlew :core:common:assemble --no-daemon --stacktrace
+        run: ./gradlew :core:common:assembleDebug --no-daemon --stacktrace
 
       - name: Test :core:common
-        run: ./gradlew :core:common:test --no-daemon --stacktrace
+        run: ./gradlew :core:common:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload test report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: core-common-test-report
-          path: core/common/build/reports/tests/test
+          path: core/common/build/reports/tests/testDebugUnitTest
+
+  core-data:
+    name: core:data — assemble + JVM tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 platform-tools'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Assemble :core:data
+        run: ./gradlew :core:data:assembleDebug --no-daemon --stacktrace
+
+      - name: Test :core:data
+        run: ./gradlew :core:data:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-data-test-report
+          path: core/data/build/reports/tests/testDebugUnitTest

@@ -167,7 +167,12 @@ Note on layout: `KeystoreManager` is the canonical location for hardware-backed 
 *   **Architectural Role**: Sanitizes incoming intents from other apps to prevent intent-redirection attacks or crash-induction payloads.
 
 ### 3.8 `TokenEncryptor.kt`
-*   **Path**: `core/services/src/main/kotlin/com/vyzorix/audiorouter/services/security/TokenEncryptor.kt`
+*   **Path**: `core/common/src/main/kotlin/com/vyzorix/audiorouter/common/utils/TokenEncryptor.kt`
+    *(Earlier drafts placed this at `core/services/security/`. It landed in
+    `core/common/utils/` in PR #7 alongside `KeystoreManager`/`CryptoHelper`
+    because it has no service-layer dependencies — it depends only on
+    `KeystoreManager`. Pulling Layer 3 forward solely to host this class
+    would inflate Layer 1's surface area for no benefit.)*
 *   **Architectural Role**: Generic AES-GCM-NoPadding wrapper used for **two** distinct secrets, with key material sourced from `KeystoreManager`:
     1. Cached `MediaProjection` credentials (legacy use case, pre-C2).
     2. The per-device C2 `command_secret` — called by `DeviceSecretStore` on `put()` to encrypt before write, and on `getSecret()` to decrypt on read.

@@ -89,7 +89,9 @@ Each layer below has: scope, files compiled, files explicitly stubbed-only, what
 
 ---
 
-## Layer 1 — `core/data`
+## Layer 1 — `core/data`  *(landed in PR #7)*
+
+**Status:** Implementation merged. JVM coverage in `:core:common:testDebugUnitTest` + `:core:data:testDebugUnitTest`. On-device acceptance still pending — see "On-device verification" below.
 
 **Scope:** Room + SQLCipher persistence, plus encrypted DataStore for the C2 secret. Fills in the Android-bound parts of `KeystoreManager`. No services yet.
 
@@ -100,18 +102,21 @@ Each layer below has: scope, files compiled, files explicitly stubbed-only, what
 - `core/data/converters/` — Room `TypeConverter`s.
 - `core/data/repository/` — Repositories that wrap DAOs.
 - `core/data/datastore/DeviceSecretStore.kt` — encrypted DataStore for `command_secret` (uses `TokenEncryptor` via `KeystoreManager`). Note: the C2 *consumers* (`CommandHmacValidator`, `FcmTokenManager`) are in Layer 8; `DeviceSecretStore` itself lives here in Layer 1 because it is purely a persistence concern.
-- `core/common/utils/KeystoreManager.kt` — fill in the implementation (Android Keystore + software fallback for Unisoc SC9863A; see `NOKIA_C22_NOTES.md` for the fallback rationale).
+- `core/common/utils/KeystoreManager.kt` — fill in the implementation (`AndroidKeystoreManager` + `SoftwareKeystoreManager` fallback for Unisoc SC9863A; selected by `KeystoreManagerFactory.create(context, profile)`; see `NOKIA_C22_NOTES.md` for the fallback rationale).
+- `core/common/utils/TokenEncryptor.kt` and `CryptoHelper.kt` — landed alongside `KeystoreManager` in `core/common/utils/` (canonical path updated in `DOC_7_DATA_SECURITY_AND_PERSISTENCE.md` §3.8; earlier draft pointed at `core/services/security/`, which Layer 1 has no reason to materialize).
 
 **Stubs only:**
 - Any DAO method whose call site is in a later layer can stay unused; do not delete the DAO method just because nothing calls it yet.
 
 **Success criteria:**
-- `./gradlew :core:data:assemble` succeeds.
-- Instrumented test that opens `AppDatabase`, writes a row, closes the DB, reopens it, reads the row back — verifying SQLCipher encryption is wired and `KeystoreManager` seal/unseal works.
-- `DeviceSecretStore.put(secret)` round-trips through `TokenEncryptor` and produces an encrypted blob on disk (the blob must be non-plaintext when inspected via `adb shell run-as`).
+- `./gradlew :core:data:assemble` succeeds.  *(landed)*
+- DAO + entity smoke test against an in-memory Room DB.  *(landed — `AppDatabaseRoomTest`)*
+- `DeviceSecretStore.put(secret)` round-trips through `TokenEncryptor` and produces an encrypted blob on disk (the blob must be non-plaintext when inspected via `adb shell run-as`).  *(landed — `DeviceSecretStoreTest.secret_is_encrypted_on_disk_not_plaintext` scans the DataStore Preferences proto and asserts the plaintext bytes never appear)*
+- `KeystoreManager` seal/unseal + tamper detection.  *(landed — `SoftwareKeystoreManagerTest`; `AndroidKeystoreManagerTest` gated on real `AndroidKeyStore` provider availability)*
 
-**On-device verification (Nokia C22):**
-- Install a smoke-test APK that just calls `AppDatabase.getInstance(ctx)` from a JUnit instrumented test. Verify it does not crash on the SoC's quirky TEE. If `KeystoreManager` falls back to software-keyed encryption, this is logged but acceptable — that is by design on Unisoc.
+**On-device verification (Nokia C22) — outstanding:**
+- Install a smoke-test APK that just calls `AppDatabaseFactory.build(ctx, cryptoHelper)` from a JUnit instrumented test. Verify it does not crash on the SoC's quirky TEE. If `KeystoreManager` falls back to software-keyed encryption via `KeystoreManagerFactory`, this is logged but acceptable — that is by design on Unisoc.
+- Run a real `AndroidKeystoreManager` seal/unseal cycle on a non-Unisoc device (e.g. a Qualcomm/MediaTek loaner) to exercise the hardware path that Robolectric cannot simulate.
 
 ---
 
