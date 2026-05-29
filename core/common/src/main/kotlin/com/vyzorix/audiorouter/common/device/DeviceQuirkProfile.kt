@@ -17,6 +17,13 @@ public data class DeviceQuirkProfile(
     val thermalZones: List<String>,
     val alsaTimingGapMs: Int,
     val audioModeQuirks: Set<AudioModeQuirk>,
+    /**
+     * Milliseconds the daemon should defer risky init (accessibility
+     * subscription, MediaProjection request, SCHED_FIFO elevation) after
+     * process start to dodge OEM Zygote-stage crashes. Consumed by
+     * [ZygoteCrashMitigator].
+     */
+    val zygoteSafeDelayMs: Long = 0L,
     val notes: String = "",
 )
 

@@ -21,5 +21,8 @@ public val UnknownDeviceProfile: DeviceQuirkProfile = DeviceQuirkProfile(
     thermalZones = emptyList(),
     alsaTimingGapMs = 0,
     audioModeQuirks = emptySet(),
+    // Conservative 1s window for unrecognised devices — too short to matter
+    // on resilient silicon, just long enough to avoid the worst Zygote races.
+    zygoteSafeDelayMs = 1_000L,
     notes = "Unrecognized device — running on safe defaults.",
 )
