@@ -72,20 +72,42 @@ Some apps (Netflix, Prime Video) will refuse to send audio to our capture engine
 
 `MediaProjection` is a resource-heavy service. On a Nokia C22, keeping this alive 24/7 can trigger the **Soft Reboot** issue you are diagnosing.
 
-### Mitigation 1: The "Idle" State
+### Mitigation 1: The "Idle" State (owned by `IdleCaptureController.kt`)
 
-- If `PlaybackStateMonitor` detects **silence** (no apps playing audio) for >30 seconds, we **pause** the Native Pipeline.
-- We keep the `AudioTrack` open (to maintain VoIP Mode) but stop reading/writing PCM. This reduces CPU load by approximately 60%.
+The idle-pause loop is owned by a dedicated class: `core/services/capture/IdleCaptureController.kt`. It does NOT live in `PlaybackCaptureEngine` itself — the capture engine stays single-purpose (move PCM bytes), and the controller wraps it with a silence-detection policy.
+
+- **Trigger:** `IdleCaptureController` subscribes to `PlaybackStateMonitor` and tracks silence duration via a debounced timer.
+- **Threshold:** If silence (no apps playing audio) persists for >30 seconds, `IdleCaptureController` calls `PlaybackCaptureEngine.pauseNativeReads()`.
+- **What "pause" actually means:** Native PCM reads from `capture_ring_buffer.cpp` stop. `AudioTrack` stays open in `MODE_IN_COMMUNICATION` so the VoIP routing exemption is not lost — dropping out of communication mode would relinquish the speaker-force advantage and let the broken headset codec re-engage. CPU drops ~60% (verified via `top` on the Nokia C22; idle daemon goes from ~12% to ~5%).
+- **Resume:** `IdleCaptureController` resumes immediately on the first of: (a) `PlaybackStateMonitor` reports any active media playback, (b) `AppLaunchObserver` reports a known media app entering foreground, (c) `UsageStatsManager` poll detects new media events. Resume latency target: <200ms (perceptually instant).
+- **State machine integration:** This is the ACTIVE ⇄ IDLE_PAUSED transition pair documented in `SYSTEM_MAP.md` §8.3.
+- **Failure case:** If `pauseNativeReads()` or `resumeNativeReads()` throws (e.g., the native ring buffer entered a bad state during pause), `CaptureRecoveryEngine` restarts the capture loop from scratch.
+- **Battery footprint:** Combined with thermal throttling, this mitigation is the primary reason a 24/7 deployment on the Nokia C22 does not trigger the soft-reboot cascade documented in `SOFT_REBOOT_ANALYSIS.md`.
 
 ### Mitigation 2: Thermal Watchdog
 
 - `DeviceThermalMonitor` checks the SoC temperature.
 - If the device hits "Critical" thermal throttling, we reduce the sample rate (e.g., from 48kHz to 44.1kHz) or temporarily kill the capture to let the phone cool down and prevent a system crash.
 
-### Mitigation 3: Zombie Prevention
+### Mitigation 3: Zombie Prevention (owned by `ProjectionDeathHandler.kt`)
 
-- If the system kills `MediaProjection` (common in A13 background restrictions), `ProjectionDeathHandler` detects the callback failure.
-- It immediately triggers `UiRecoveryDaemon` to re-launch the permission trampoline, asking the user to grant access again (or automatically if the token is cached/persistent).
+Projection death recovery is owned by a dedicated class: `core/services/capture/ProjectionDeathHandler.kt`. It is **distinct** from `ProjectionTokenManager.kt` — the manager tracks the token's general lifecycle (grant / revoke / persist), while the death handler is a single-purpose listener for the specific `MediaProjection.Callback.onStop()` callback that fires when the system involuntarily tears down the session.
+
+- **Registration:** `MediaProjectionCaptureSession` registers `ProjectionDeathHandler` as a `MediaProjection.Callback` on the active projection during T+10s of the startup sequence (see `SYSTEM_MAP.md` §2).
+- **Trigger:** Android's `MediaProjection.Callback.onStop()` fires. On the Nokia C22 this is most commonly caused by:
+  - A13 background-restriction enforcement during Doze mode.
+  - Memory pressure-driven `oom_score_adj` recalculation killing the projection process.
+  - System update / app update reinstalling the package.
+  - User explicitly stopping casting from the system UI (rare; we suppress the recording overlay).
+- **Response sequence:**
+  1. Log `ProjectionDeathEvent { reason, uptime_ms, capture_state, last_pcm_timestamp }` to `CrashTraceStore` for forensic analysis.
+  2. Increment `RuntimeEventTimeline` with a high-severity entry.
+  3. Pause `IdleCaptureController` (it is invalid to keep silence-detecting on a dead projection).
+  4. Invoke `UiRecoveryDaemon.recoverProjection()`. The daemon re-launches `ProjectionPermissionActivity`; `AccessibilityGestureQueue` auto-clicks "Start Now" within ~100ms; the trampoline finishes; a new token flows back to `ProjectionTokenManager` which updates `TokenPersistence`.
+  5. On successful re-grant: `CaptureRecoveryEngine` rebuilds `PlaybackCaptureEngine` against the new token and resumes from the last known capture state.
+- **Failure-of-failure case:** If three consecutive re-grant attempts fail within 60 seconds, `CommunicationModeFallback` activates: the daemon abandons the projection-based capture path and relies on VoIP-mode speaker forcing alone. This degrades capability (apps' system audio no longer routes through our pipeline) but preserves the headset-codec bypass.
+- **State machine integration:** This is the ACTIVE → REVOKED transition documented in `SYSTEM_MAP.md` §8.3.
+- **Why a separate class:** Keeping the onStop handler isolated from `ProjectionTokenManager` means a bug in the recovery path cannot corrupt the normal token-lifecycle bookkeeping, and vice versa. The two classes communicate only through `ProjectionTokenManager`'s public API.
 
 ## On-Device Verification (No PC Required)
 

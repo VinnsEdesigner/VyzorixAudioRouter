@@ -407,6 +407,114 @@ jobs:
 
 ---
 
+## CI Test Secret Injection — `command_secret` Bypass for Fresh Installs
+
+### The Problem
+
+A fresh CI install of the APK — inside the Android emulator that `android_build.yml` spins up, or on a real test device that has never registered with the production update server — has **no `command_secret` stored in `DeviceSecretStore`**. The downstream consequences:
+
+1. `CommandHmacValidator.validate(frame)` returns `MISSING_SECRET` for every command, because `DeviceSecretStore.getSecret()` returns `null` (see <code>DOC_7_DATA_SECURITY_AND_PERSISTENCE.md</code> §3.9).
+2. `FcmTokenManager` cannot complete its `POST /v1/device/register` call against a real server because CI environments have no network egress to `updates.vyzorix.com` (and they should NOT — we don't want CI runs polluting the production fleet's device table).
+3. Any instrumented test that exercises the C2 stack (`RemoteCommandExecutor`, `WebSocketClientManager`, `FcmCommandParser`) fails with `INVALID_SIGNATURE` because there is no shared secret to sign with.
+
+Without a bypass, every PR that touches anywhere near the C2 stack will fail in CI for a reason that has nothing to do with the diff under review.
+
+### The Solution: `DiagnosticTestRunner` Bypass Flag
+
+A bypass is wired through `DiagnosticTestRunner.kt` (in `core/services/testing/`). It is gated on **all three** of the following conditions — ANY of them being false locks the bypass closed:
+
+1. `BuildConfig.DEBUG == true` (release builds NEVER have the bypass available, period).
+2. The runtime is connected to a Frida-style instrumentation harness OR `am instrument` (detected via `ActivityManager.isRunningInTestHarness()` + the AndroidX testing runtime check).
+3. The Gradle build flag `-PenableCommandSecretBypass=true` was passed at compile time — baked into `BuildConfig.ENABLE_COMMAND_SECRET_BYPASS` as a compile-time constant.
+
+When all three are true, `DiagnosticTestRunner.injectMockSecret()` is callable from instrumented tests:
+
+```kotlin
+@Before
+fun setUp() {
+    if (!BuildConfig.ENABLE_COMMAND_SECRET_BYPASS) {
+        org.junit.Assume.assumeTrue(
+            "Skipping C2 test: -PenableCommandSecretBypass=true not set",
+            false
+        )
+    }
+    DiagnosticTestRunner.injectMockSecret(
+        deviceId = "ci-mock-device-00000000",
+        commandSecret = "0000000000000000000000000000000000000000000000000000000000000000"
+    )
+}
+```
+
+`injectMockSecret()` writes the mock secret into `DeviceSecretStore` via the normal `put()` path (so `TokenEncryptor` still encrypts it — we do NOT bypass the on-disk encryption, only the registration round-trip). On test teardown, `DeviceSecretStore.clear()` removes it so subsequent tests do not see a stale secret.
+
+### Workflow Configuration
+
+`android_build.yml` MUST pass the bypass flag when running instrumented tests. Update the build step:
+
+```yaml
+- name: Build debug APK (with command_secret bypass enabled)
+  run: ./gradlew assembleDebug -PenableCommandSecretBypass=true --no-daemon
+
+- name: Build instrumented test APK
+  run: ./gradlew assembleDebugAndroidTest -PenableCommandSecretBypass=true --no-daemon
+```
+
+`release.yml` MUST NOT pass the bypass flag (and should fail the build if anyone tries to). Add a guard step:
+
+```yaml
+- name: Verify release build does NOT enable command_secret bypass
+  run: |
+    if grep -r "ENABLE_COMMAND_SECRET_BYPASS = true" app/build/generated/ 2>/dev/null; then
+      echo "ERROR: release build has command_secret bypass enabled. This is forbidden."
+      exit 1
+    fi
+```
+
+### Mock Server Alternative
+
+For tests that need a real registration round-trip (not just a mock secret), spin up a local mock server in CI:
+
+```yaml
+- name: Start mock update server
+  run: |
+    docker run -d --name mock-update-server \
+      -p 18080:8080 \
+      -e VYZORIX_FLEET_TOKEN=ci-test-fleet-token \
+      vyzorix/mock-update-server:latest
+    sleep 5  # let it warm up
+
+- name: Run instrumented tests against mock server
+  run: ./gradlew connectedDebugAndroidTest \
+    -PupdateServerUrl=http://10.0.2.2:18080 \
+    -PenableCommandSecretBypass=true \
+    --no-daemon
+```
+
+The mock server (`vyzorix/mock-update-server` — a stub Go server in `vyzorix-update-server/cmd/mockserver/`) accepts any fleet token, returns a deterministic `command_secret` (`0000…`) for any `deviceId`, and never persists state. This gives instrumented tests a real `POST /v1/device/register` flow without touching production.
+
+### Threat Model
+
+The bypass is safe because:
+
+- `BuildConfig.DEBUG` gating means release APKs cannot ever enable the bypass, even if an attacker recompiles with the flag set — `release.yml` enforces the absence at CI time.
+- The mock secret is a known weak value (all zeros). Any real server seeing a command signed with this secret would reject it (real `command_secret`s are 32 cryptographically-random bytes — collision probability negligible).
+- The bypass writes through the SAME encryption path as a real secret. The plaintext mock secret never lands on disk; the bypass is observable only at the API boundary, not in storage.
+
+### What NOT to Do
+
+- Do NOT hard-code the mock secret as a fallback inside `CommandHmacValidator`. The validator must remain pure; the bypass must live in `DiagnosticTestRunner` where it can be gated.
+- Do NOT skip HMAC validation altogether in debug builds. The validation logic itself must run in every test — we want to catch HMAC bugs in CI. We're only bypassing the *registration* step.
+- Do NOT commit a real `command_secret` to the test sources, even a "burner" one. Always use the deterministic all-zeros mock.
+
+### Cross-References
+
+- `DOC_7_DATA_SECURITY_AND_PERSISTENCE.md` §3.9 — `DeviceSecretStore` behavior on missing secret.
+- `COMMAND_SECURITY.md` §3 — HMAC validation logic that the bypass test exercises.
+- `DEVICE_REGISTRATION.md` §3.1 — the real registration flow the mock server simulates.
+- `BUILD_ORDER.md` Layer 8 — the C2 stack tests that benefit from this bypass.
+
+---
+
 ## Workflow Trigger Sequence
 
 ```

@@ -213,25 +213,48 @@ T+9s    ┌───────────────────────
 T+10s   ┌─────────────────────────────────────────────────────┐
         │  WATCHDOG & STABILITY: Safety Nets Active            │
         │  1. DaemonWatchdog.start()                           │
-        │     - Pings every 5s                                 │
+        │     - Broad daemon health check every 5s             │
+        │     - Verifies capture loop, playback loop, route    │
+        │       state, WS heartbeat across all subsystems      │
+        │     - Calls ServiceRecoveryManager on timeout        │
+        │     - Distinct from ServiceHeartbeat (thread-only)   │
         │  2. PipelineHealthChecker.monitor()                  │
-        │     - Verifies capture/playback threads running      │
+        │     - Audio-specific: AudioRecord read loop and      │
+        │       AudioTrack write loop only                     │
+        │     - Reports pipeline health to DaemonStatusProvider│
+        │     - Distinct from DaemonWatchdog (broader health)  │
         │  3. CrashLoopProtector.enable()                      │
         │     - Tracks restart count (resets after 10min)      │
         │  4. LastKnownStateDumper.start()                     │
         │     - Writes heartbeat every 10s                     │
         │  5. UpdateChecker.schedule()                         │
         │     - First check in 6 hours (configurable)          │
+        │  6. IdleCaptureController.start()                    │
+        │     - Monitors silence >30s -> pauses native PCM     │
+        │       pipeline (~60% CPU reduction); keeps           │
+        │       AudioTrack open for VoIP mode; resumes on      │
+        │       audio detection                                │
+        │  7. ProjectionDeathHandler.register()                │
+        │     - Listens for MediaProjection onStop() death     │
+        │       callback (distinct from ProjectionTokenManager)│
+        │     - On death: logs CrashTraceStore -> triggers     │
+        │       UiRecoveryDaemon to re-launch trampoline       │
         └──────────────────────────┬──────────────────────────┘
                                    │
                                    ▼
 T+11s   ┌─────────────────────────────────────────────────────┐
         │  DASHBOARD: First Full Update                        │
-        │  ServiceNotificationDashboard.postUpdate()           │
-        │  - Tier 1: Route Status -> SPEAKER FORCED [OK]       │
-        │  - Tier 2: Capture -> ACTIVE (48kHz, 0 underruns)   │
-        │  - Tier 3: Health -> Risk Score 0/100, Uptime 11s    │
-        │  - Notification visible in shade (expandable)        │
+        │  1. DaemonStatusProvider.aggregate()                 │
+        │     - Polls 15+ subsystems (route, capture, thermal, │
+        │       crash, network, update, battery, memory, WS)   │
+        │     - Builds unified DaemonStatus model              │
+        │     - Sanitizes (PII strip, format text)             │
+        │     - Runs on AppDispatchers.IO                      │
+        │  2. ServiceNotificationDashboard.postUpdate(status)  │
+        │     - Tier 1: Route -> SPEAKER FORCED [OK]           │
+        │     - Tier 2: Capture -> ACTIVE (48kHz, 0 underruns) │
+        │     - Tier 3: Health -> Risk 0/100, Uptime 11s       │
+        │     - Notification visible in shade (expandable)     │
         └──────────────────────────┬──────────────────────────┘
                                    │
                                    ▼
@@ -322,6 +345,28 @@ T+12s+  ┌───────────────────────
 | **BootStateRestorer** | LastKnownStateDumper | Service restart after reboot | Reads pre-crash context | YES |
 | **BootStateRestorer** | ProjectionTokenManager | After reboot | Checks token validity | YES |
 | **AccessibilityRecoveryHandler** | UiRecoveryDaemon | Accessibility stripped on reboot | Reopens settings | YES |
+| Caller | Callee | Trigger | Purpose | Critical? |
+|--------|--------|---------|---------|-----------|
+| **MediaProjectionCaptureSession** | ProjectionDeathHandler | Token granted | Registers `MediaProjection.Callback.onStop()` death handler | YES |
+| **ProjectionDeathHandler** | CrashTraceStore | onStop() fired | Persists projection death event for forensics | YES |
+| **ProjectionDeathHandler** | UiRecoveryDaemon | onStop() fired | Re-launches projection permission trampoline | YES |
+| **PlaybackCaptureEngine** | IdleCaptureController | Capture started | Begins silence monitoring (>30s threshold) | NO |
+| **IdleCaptureController** | PlaybackCaptureEngine | Silence >30s detected | Pauses native PCM read loop (~60% CPU saving) | NO |
+| **IdleCaptureController** | PlaybackCaptureEngine | Audio detected after pause | Resumes PCM read loop immediately | NO |
+| **DaemonStatusProvider** | All 15+ subsystems (SpeakerForceEngine, PlaybackCaptureEngine, SoftRebootPredictor, DeviceThermalMonitor, ProcessHealthMonitor, CrashMetrics, BatteryImpactMonitor, UpdateStateStore, NetworkStateMonitor, PipelineHealthChecker, WebSocketClientManager, etc.) | Every 10s | Aggregates live status into unified DaemonStatus model | YES |
+| Caller | Callee | Trigger | Purpose | Critical? |
+|--------|--------|---------|---------|-----------|
+| **WebSocketFrameHandler** | CommandHmacValidator | CommandFrame received over WSS | Validates HMAC + timestamp + nonce before forwarding | YES |
+| **FcmCommandParser** | CommandHmacValidator | Silent push CommandFrame received | Same validation path as WebSocket commands | YES |
+| **RemoteCommandExecutor** | CommandHmacValidator | About to execute command | Final HMAC re-check before privileged execution | YES |
+| **CommandHmacValidator** | DeviceSecretStore | HMAC recomputation | Decrypts per-device command_secret via TokenEncryptor | YES |
+| **CommandHmacValidator** | NonceCache | Validation step 5 | Replay detection via TTL-based nonce dedup | YES |
+| **CommandHmacValidator** | ServicePermissionVerifier | 3 rejections in 60s | Triggers 5min command execution cooldown | YES |
+| **SafeModeController** | NonceCache | Safe mode entry | Calls NonceCache.clear() to drop stale entries | NO |
+| **FcmTokenManager** | DeviceSecretStore | POST /v1/device/register response | Persists encrypted command_secret on first registration | YES |
+| **RemoteCommandResultDispatcher** | WebSocketClientManager | Command result ready | Checks isConnected() before send | YES |
+| **RemoteCommandResultDispatcher** | PendingResultQueue | WS disconnected | Enqueues result JSON instead of dropping | YES |
+| **WebSocketClientManager** | PendingResultQueue | onOpen (reconnect) | Flushes queued results in FIFO order before telemetry | YES |
 
 ### Interaction Rules
 
@@ -583,6 +628,11 @@ Thread: AppDispatchers.IO
 | **Update install rejected** | PackageManager returns INSTALL_FAILED_* | Logs error code, notifies user | Prompts user to enable "Install unknown apps" | If signature mismatch -> Uninstall old version, clean install |
 | **Server unreachable** | UpdateChecker HTTP timeout | Logs error, schedules retry | Exponential backoff: 30m -> 1h -> 6h | If server down for >24h -> Continues normal operation |
 | **Accessibility stripped on reboot** | BootStateRestorer detects service not enabled | Triggers AccessibilityRecoveryHandler | UiRecoveryDaemon re-opens settings, user re-enables | BootStateRestorer resumes from LastKnownStateDumper |
+| **MediaProjection death (system-killed)** | `ProjectionDeathHandler` receives `MediaProjection.Callback.onStop()` (distinct from ProjectionTokenManager generic lifecycle) | Logs ProjectionDeathEvent to CrashTraceStore; pauses capture | UiRecoveryDaemon re-launches `ProjectionPermissionActivity` trampoline; AccessibilityGestureQueue auto-clicks "Start Now" | If re-grant fails 3x -> `CommunicationModeFallback` activates (VoIP-only) |
+| **Capture pipeline idle (silence >30s)** | `IdleCaptureController` detects no PCM activity for 30s | Pauses native ring buffer reads; keeps AudioTrack open in `MODE_IN_COMMUNICATION` | On audio detection (UsageStatsManager or PlaybackStateMonitor) -> immediate resume | If resume fails -> `CaptureRecoveryEngine` restarts capture loop |
+| **Command HMAC validation fails** | `CommandHmacValidator` returns INVALID_SIGNATURE / EXPIRED_TIMESTAMP / REPLAYED_NONCE | Drops command; logs rejection to CrashTraceStore; sends rejection result via `RemoteCommandResultDispatcher` | None — frame discarded silently | After 3 rejections in 60s -> `ServicePermissionVerifier` enforces 5min command cooldown |
+| **WebSocket disconnected with pending command result** | `WebSocketClientManager.isConnected()` returns false in `RemoteCommandResultDispatcher` | Enqueues CommandResult JSON to `PendingResultQueue` (FIFO, in-memory) | On `WebSocketConnectionListener.onOpen` (reconnect) -> queue flushed in FIFO order before resuming telemetry stream | Queue is not persisted across restarts; stale entries fail 5min TTL anyway |
+| **Nonce replay attack** | `NonceCache.contains(frame.nonce)` returns true | Returns REPLAYED_NONCE; command rejected | None — replayed frames cannot succeed within the 30s timestamp window | After 3 such rejections in 60s -> 5min command cooldown |
 
 ### 5.2 Recovery Orchestration Order
 
@@ -635,10 +685,21 @@ AppDispatchers.Default (CPU-Intensive)
 - PCM processing (resampling, mixing, volume shaping)
 - Metrics calculation (latency, crash counts, battery)
 - Signature pattern matching (SoftRebootPredictor)
-- Data aggregation (DaemonStatusProvider)
 - Log formatting (TimestampedLogFormatter)
 - Update checksum verification (SHA-256)
+- `RemoteCommandExecutor` command execution (post-HMAC validation)
+- `CommandHmacValidator.validate()` (HMAC recomputation, constant-time compare)
+- `RemoteCommandResultDispatcher` result JSON compilation
 Rule: Heavy computation. No blocking I/O. No UI calls.
+
+AppDispatchers.IO (additional, beyond the items listed above)
+- `DaemonStatusProvider.aggregate()` — runs every 10s, aggregates from 15+ subsystems
+- `WebSocketClientManager` — frame parsing, send/receive, `PendingResultQueue` flush on reconnect
+- `WebSocketKeepAliveEngine` — ping frames every 15s
+- `WebSocketTelemetryDispatcher` — outbound telemetry encoding
+- `SafeModeController.enter()` — calls `NonceCache.clear()` on transition
+- `FcmTokenManager` — POST /v1/device/register; persists encrypted command_secret via `DeviceSecretStore`
+- `DeviceSecretStore` — DataStore read/write (encrypted blob); calls `TokenEncryptor` (AES-GCM via KeystoreManager key)
 
 ServiceScope (Long-Lived Service)
 - SpeakerForceEngine loop (every 500ms)
@@ -673,6 +734,36 @@ Rule: Isolated from coroutine dispatchers. Direct JNI.
 6. **Cancellation Propagation:** `ServiceScope.cancel()` must cascade to all child jobs (watchdog loops, monitoring polls, dashboard updates, update checks).
 
 7. **Foreground Service Isolation:** `UpdateDownloadService` runs as a separate foreground service with `dataSync` type, isolated from `PersistentAudioService` `mediaPlayback` type).
+
+### 6.3 Cross-Dispatcher Shared Mutable State (Explicit Locking)
+
+Two objects are accessed concurrently from different dispatchers and therefore require explicit thread-safety primitives. These are NOT actor-isolated and NOT confined to a single dispatcher — they sit at the boundary between the C2 command execution path and the network/lifecycle paths. Any future component added to either set MUST be documented here before merging the implementation.
+
+#### `PendingResultQueue` (cross-dispatcher)
+
+| Caller | Dispatcher | Operation |
+|--------|------------|-----------|
+| `RemoteCommandResultDispatcher` | `AppDispatchers.Default` | `enqueue(resultJson: String)` when `WebSocketClientManager.isConnected() == false` |
+| `WebSocketClientManager` | `AppDispatchers.IO` | `drainAll(): List<String>` in `WebSocketConnectionListener.onOpen` reconnect callback (FIFO order) |
+| `WebSocketClientManager` | `AppDispatchers.IO` | `clear()` after successful flush of drained results |
+
+- **Required primitive:** `ReentrantLock` (or `Mutex` if held across suspension points — but the operations here are non-suspending, so `ReentrantLock` is sufficient and avoids coroutine overhead).
+- **Invariant:** FIFO ordering must be preserved across enqueue/drain pairs. A `ConcurrentLinkedQueue` is acceptable for FIFO but does NOT give atomic drain-and-clear; wrap drain+clear in the lock.
+- **Persistence:** In-memory only. Not persisted across process restarts (5min TTL on entries means stale frames would be replay-rejected anyway).
+- **Bounds:** Cap at 100 entries; on overflow drop oldest with a `WARN` log to RuntimeEventTimeline.
+
+#### `NonceCache` (cross-dispatcher)
+
+| Caller | Dispatcher | Operation |
+|--------|------------|-----------|
+| `CommandHmacValidator` | `AppDispatchers.Default` | `contains(nonce: String): Boolean` then `store(nonce: String)` on VALID result |
+| `SafeModeController` | `AppDispatchers.IO` | `clear()` on safe-mode entry |
+
+- **Required primitive:** Thread-safe `LinkedHashMap` wrapped under `synchronized` / `ReentrantLock`. A `ConcurrentHashMap` will NOT preserve LRU insertion order needed for capacity-bounded eviction.
+- **Invariant:** `contains` + `store` must be effectively atomic from the validator's perspective — two concurrent commands with the same nonce must result in exactly one VALID and one REPLAYED_NONCE. Wrap the two-step sequence in the lock.
+- **Capacity:** 200 entries max with LRU eviction; ~8KB footprint on 2GB device.
+- **TTL:** 5 minutes; lazy eviction on every `store()`. No background sweeper thread (avoids extra dispatcher).
+- **Persistence:** Not persisted. Cleared on SafeMode transition.
 
 ---
 
@@ -756,7 +847,9 @@ Phase 6: Audio Pipeline (T+7s to T+9s)
 
 Phase 7: Monitoring & Safety (T+9s to T+11s)
 ├── 7.1 DaemonWatchdog.start()
+│   └── Broad daemon health; 5s pings; calls ServiceRecoveryManager on timeout
 ├── 7.2 PipelineHealthChecker.monitor()
+│   └── Audio-specific: AudioRecord/AudioTrack loops; feeds DaemonStatusProvider
 ├── 7.3 AppLaunchObserver.register()
 ├── 7.4 WindowTransitionTracker.register()
 ├── 7.5 SoftRebootPredictor.startUptimeMonitoring()
@@ -766,7 +859,28 @@ Phase 7: Monitoring & Safety (T+9s to T+11s)
 ├── 7.9 NetworkStateMonitor.register()
 ├── 7.10 UpdateChecker.schedule()
 ├── 7.11 CrashLoopProtector.enable()
-└── 7.12 LastKnownStateDumper.start()
+├── 7.12 LastKnownStateDumper.start()
+├── 7.13 IdleCaptureController.start()
+│   ├── 7.13.1 Subscribe to PlaybackStateMonitor (silence detection)
+│   └── 7.13.2 Configure 30s silence threshold for pause; ~60% CPU saving
+├── 7.14 ProjectionDeathHandler.register()
+│   └── Listens for MediaProjection.Callback.onStop(); triggers UiRecoveryDaemon
+└── 7.15 DaemonStatusProvider.start()
+    ├── 7.15.1 Wire upstream subscribers from all 15+ subsystems
+    └── 7.15.2 Schedule aggregate() every 10s on AppDispatchers.IO
+
+Phase 7b: C2 Stack (T+11s, deferred until network stable — Layer 8 in BUILD_ORDER.md)
+├── 7b.1 KeystoreManager.unsealCommandSecretKey()
+├── 7b.2 DeviceSecretStore.load()
+│   └── On first run with no secret: defer to FcmTokenManager registration flow
+├── 7b.3 CommandHmacValidator.initialize(secret)
+├── 7b.4 NonceCache.initialize()
+├── 7b.5 PendingResultQueue.initialize()
+├── 7b.6 FcmTokenManager.start()
+│   └── If no command_secret: POST /v1/device/register; persist response
+├── 7b.7 WebSocketClientManager.connect()
+│   └── On onOpen: drain PendingResultQueue (FIFO) before resuming telemetry
+└── 7b.8 WebSocketKeepAliveEngine.start() (15s pings)
 
 Phase 8: Steady State (T+12s+)
 ├── 8.1 DaemonLifecycleManager.markReady()
@@ -835,7 +949,14 @@ Phase 4: Cleanup (T+6s to T+7s)
 ├── 4.3 DaemonDatabase.close()
 ├── 4.4 KeystoreManager.release()
 ├── 4.5 OverlayShortcutController.destroy()
-└── 4.6 RouterAccessibilityService.onDestroy()
+├── 4.6 RouterAccessibilityService.onDestroy()
+├── 4.7 WebSocketClientManager.disconnect()
+│   └── Flush PendingResultQueue if possible; otherwise queue lost (acceptable)
+├── 4.8 NonceCache.clear()
+├── 4.9 PendingResultQueue.clear()
+├── 4.10 ProjectionDeathHandler.unregister()
+├── 4.11 IdleCaptureController.stop()
+└── 4.12 DaemonStatusProvider.stop()
 ```
 
 ---
@@ -907,34 +1028,55 @@ Phase 4: Cleanup (T+6s to T+7s)
 
 ### 8.3 Capture State Machine
 
+Owned by `IdleCaptureController` (ACTIVE ⇄ IDLE_PAUSED transitions) and `ProjectionTokenManager` / `ProjectionDeathHandler` (REVOKED transitions).
+
 ```
 ┌─────────────┐     Token granted       ┌──────────────┐
-│  IDLE       │ ──────────────────────► │   ACTIVE     │
-│ (No media)  │ ◄────────────────────── │(Capturing PCM│
-└──────┬──────┘     Silence >30s        │  to buffer)  │
-       │                                 └──────┬───────┘
-       │                                        │
-       │                                        │ Token revoked
-       │                                        ▼
-       │                                 ┌──────────────┐
-       │                                 │   REVOKED    │
-       │                                 │(Token lost)  │
-       │                                 └──────┬───────┘
-       │                                        │
-       │                                        │ Buffer empty >5s
-       │                                        ▼
-       │                                 ┌──────────────┐
-       │                                 │   STARVED    │
-       │                                 │(No data)     │
-       │                                 └──────┬───────┘
-       │                                        │
-       │                                        │ App blocks capture
-       │                                        ▼
-       │                                 ┌──────────────┐
-       │                                 │   BLOCKED    │
-       │                                 │(DRM/Privacy) │
-       │                                 └──────────────┘
+│  IDLE       │ ──────────────────────► │   ACTIVE     │ ◄──────────────┐
+│ (No media)  │                          │(Capturing PCM│                │
+└──────┬──────┘                          │  to buffer)  │                │
+       │                                  └──────┬───────┘                │
+       │                                         │                        │
+       │                                         │ Silence >30s detected  │
+       │                                         │ (IdleCaptureController)│
+       │                                         ▼                        │
+       │                                  ┌──────────────┐                │
+       │                                  │ IDLE_PAUSED  │                │
+       │                                  │ AudioTrack    │                │
+       │                                  │ stays open;   │                │
+       │                                  │ native PCM    │                │
+       │                                  │ reads paused; │                │
+       │                                  │ ~60% CPU save │────────────────┘
+       │                                  └──────┬───────┘  Audio detected
+       │                                         │           (resume)
+       │                                         │ Token revoked
+       │                                         ▼
+       │                                  ┌──────────────┐
+       │                                  │   REVOKED    │
+       │                                  │ onStop() →    │
+       │                                  │ Projection-   │
+       │                                  │ DeathHandler  │
+       │                                  └──────┬───────┘
+       │                                         │
+       │                                         │ Buffer empty >5s
+       │                                         ▼
+       │                                  ┌──────────────┐
+       │                                  │   STARVED    │
+       │                                  │(No data)     │
+       │                                  └──────┬───────┘
+       │                                         │
+       │                                         │ App blocks capture
+       │                                         ▼
+       │                                  ┌──────────────┐
+       │                                  │   BLOCKED    │
+       │                                  │(DRM/Privacy) │
+       │                                  └──────────────┘
 ```
+
+Notes:
+- ACTIVE ⇄ IDLE_PAUSED is owned by `IdleCaptureController` and is the steady-state energy-savings loop. AudioTrack remains open in `MODE_IN_COMMUNICATION` across this transition so the VoIP exemption is not lost.
+- ACTIVE → REVOKED is owned by `ProjectionDeathHandler` (dedicated `MediaProjection.Callback.onStop()` handler), distinct from the generic lifecycle handled by `ProjectionTokenManager`.
+- IDLE_PAUSED → REVOKED is possible if the system kills the projection while the pipeline is paused; recovery still routes through `ProjectionDeathHandler` → `UiRecoveryDaemon`.
 
 ### 8.4 Update State Machine
 
@@ -1057,6 +1199,9 @@ Phase 4: Cleanup (T+6s to T+7s)
 | **Updates** | UpdateChecker, UpdateDownloader, UpdateInstaller | UpdateConfig, NetworkStateMonitor, UpdateStateStore | No remote updates, manual APK install required |
 | **Network** | NetworkStateMonitor, UpdateDownloadClient | ConnectivityManager, OkHttp | Update checks fail silently |
 | **Overlay** | OverlayShortcutController, OverlayPermissionManager | WindowManager, SYSTEM_ALERT_WINDOW | No floating toggle button |
+| **C2 Security** | CommandHmacValidator, NonceCache, DeviceSecretStore, TokenEncryptor | KeystoreManager, SafeModeController (clear on safe mode), ServicePermissionVerifier (cooldown) | Remote commands accepted without authentication; replay attacks possible |
+| **C2 Transport** | WebSocketClientManager, WebSocketFrameHandler, PendingResultQueue, WebSocketKeepAliveEngine, FcmCommandParser, FcmTokenManager | NetworkStateMonitor, RemoteCommandExecutor, RemoteCommandResultDispatcher | No remote control or telemetry; command results lost on transient disconnects without queue |
+| **Capture Lifecycle** | IdleCaptureController, ProjectionDeathHandler, CaptureLifecycleController, CaptureRecoveryEngine | PlaybackCaptureEngine, ProjectionTokenManager, UiRecoveryDaemon | Battery drain ~60% higher when idle; projection deaths silently leave pipeline dead |
 
 ---
 
@@ -1075,8 +1220,8 @@ Phase 4: Cleanup (T+6s to T+7s)
 | `ACCESS_NETWORK_STATE` | Manifest | Auto-granted on install | NetworkStateMonitor | NO |
 | `REQUEST_INSTALL_PACKAGES` | Special | User grants in Settings | UpdateInstaller | NO |
 | `SYSTEM_ALERT_WINDOW` | Special | User grants via overlay prompt | OverlayShortcutController | NO |
-| `QUERY_ALL_PACKAGES` | Special | User grants via Play Console | AppLaunchObserver (UsageStats) | NO |
-| `PACKAGE_USAGE_STATS` | Special | User grants in Settings | AppLaunchObserver | NO |
+| `QUERY_ALL_PACKAGES` | Special (Manifest, normal protection level on A11+) | Manifest-declared; no user prompt — Google Play flags for review (N/A: this is not a Play Store app, so it is fine to ship) | `DeviceQuirkRegistry`, `PackageChangeReceiver` (package state queries on Android 11+) | YES on A11+ — without it, package state queries silently return empty; affects DeviceQuirkRegistry detection and PackageChangeReceiver blacklist updates |
+| `PACKAGE_USAGE_STATS` | Special | User grants in Settings -> Apps -> Special access -> Usage data access | `AppLaunchObserver` (UsageStatsManager event polling) | NO |
 
 ---
 
