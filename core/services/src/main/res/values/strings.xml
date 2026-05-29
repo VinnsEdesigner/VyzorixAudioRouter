@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Strings shipped from :core:services so the accessibility service binds
+      without requiring the application module to provide them. :app may
+      override either string by redefining the resource with the same name.
+    -->
+    <string name="accessibility_service_description">VyzorixAudioRouter
+        — bootstrap. Required so the daemon can detect first-run grants and
+        re-route audio to the speaker on Nokia C22 devices with a phantom
+        wired-headset fault.</string>
+    <string name="accessibility_service_summary">Required for audio routing on Nokia C22.</string>
+
+    <string name="daemon_notification_title">VyzorixAudioRouter</string>
+    <string name="daemon_notification_text_running">Speaker route active</string>
+    <string name="daemon_notification_text_starting">Starting audio route…</string>
+</resources>

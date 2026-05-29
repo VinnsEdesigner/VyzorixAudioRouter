@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phase 1 Layer 3 accessibility configuration for RouterAccessibilityService.
+
+  Per doc/BUILD_ORDER.md §Layer 3, the accessibility service exists only as
+  a bootstrap entrypoint at this stage — it does NOT consume events. We
+  therefore subscribe to the minimum event set (typeWindowStateChanged) so
+  the service binds, but RouterAccessibilityService.onAccessibilityEvent is
+  a no-op until Layer 4+ adds the permission-screen automation.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="100"
+    android:description="@string/accessibility_service_description"
+    android:summary="@string/accessibility_service_summary" />
