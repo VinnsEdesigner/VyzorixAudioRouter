@@ -1,0 +1,342 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "e4f5f62a0b262d7b916d42ac92da9fde",
+    "entities": [
+      {
+        "tableName": "daemon_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `snapshotEpochMs` INTEGER NOT NULL, `daemonState` TEXT NOT NULL, `routeState` TEXT NOT NULL, `captureState` TEXT NOT NULL, `safeModeEnabled` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "snapshotEpochMs",
+            "columnName": "snapshotEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "daemonState",
+            "columnName": "daemonState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeState",
+            "columnName": "routeState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "captureState",
+            "columnName": "captureState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "safeModeEnabled",
+            "columnName": "safeModeEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_daemon_state_snapshotEpochMs",
+            "unique": false,
+            "columnNames": [
+              "snapshotEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_daemon_state_snapshotEpochMs` ON `${TABLE_NAME}` (`snapshotEpochMs`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "crash_events",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `epochMs` INTEGER NOT NULL, `crashType` TEXT NOT NULL, `signature` TEXT NOT NULL, `stackHead` TEXT NOT NULL, `processUptimeMs` INTEGER NOT NULL, `consecutiveCrashes` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "epochMs",
+            "columnName": "epochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "crashType",
+            "columnName": "crashType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signature",
+            "columnName": "signature",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stackHead",
+            "columnName": "stackHead",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processUptimeMs",
+            "columnName": "processUptimeMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consecutiveCrashes",
+            "columnName": "consecutiveCrashes",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_crash_events_epochMs",
+            "unique": false,
+            "columnNames": [
+              "epochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_crash_events_epochMs` ON `${TABLE_NAME}` (`epochMs`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "update_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `checkedAtEpochMs` INTEGER NOT NULL, `updateState` TEXT NOT NULL, `availableVersionCode` INTEGER, `availableVersionName` TEXT, `downloadedPath` TEXT, `checksumHex` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "checkedAtEpochMs",
+            "columnName": "checkedAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updateState",
+            "columnName": "updateState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "availableVersionCode",
+            "columnName": "availableVersionCode",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "availableVersionName",
+            "columnName": "availableVersionName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "downloadedPath",
+            "columnName": "downloadedPath",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "checksumHex",
+            "columnName": "checksumHex",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_update_state_checkedAtEpochMs",
+            "unique": false,
+            "columnNames": [
+              "checkedAtEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_update_state_checkedAtEpochMs` ON `${TABLE_NAME}` (`checkedAtEpochMs`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "route_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `transitionEpochMs` INTEGER NOT NULL, `fromRoute` TEXT NOT NULL, `toRoute` TEXT NOT NULL, `reason` TEXT NOT NULL, `audioDeviceId` INTEGER, `originMarker` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transitionEpochMs",
+            "columnName": "transitionEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fromRoute",
+            "columnName": "fromRoute",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toRoute",
+            "columnName": "toRoute",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "audioDeviceId",
+            "columnName": "audioDeviceId",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "originMarker",
+            "columnName": "originMarker",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_route_history_transitionEpochMs",
+            "unique": false,
+            "columnNames": [
+              "transitionEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_route_history_transitionEpochMs` ON `${TABLE_NAME}` (`transitionEpochMs`)"
+          },
+          {
+            "name": "index_route_history_fromRoute_toRoute",
+            "unique": false,
+            "columnNames": [
+              "fromRoute",
+              "toRoute"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_route_history_fromRoute_toRoute` ON `${TABLE_NAME}` (`fromRoute`, `toRoute`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "permission_grants",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `recordedAtEpochMs` INTEGER NOT NULL, `permission` TEXT NOT NULL, `outcome` TEXT NOT NULL, `source` TEXT NOT NULL, `automationAttemptId` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordedAtEpochMs",
+            "columnName": "recordedAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "permission",
+            "columnName": "permission",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "automationAttemptId",
+            "columnName": "automationAttemptId",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_permission_grants_recordedAtEpochMs",
+            "unique": false,
+            "columnNames": [
+              "recordedAtEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_permission_grants_recordedAtEpochMs` ON `${TABLE_NAME}` (`recordedAtEpochMs`)"
+          }
+        ],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e4f5f62a0b262d7b916d42ac92da9fde')"
+    ]
+  }
+}
