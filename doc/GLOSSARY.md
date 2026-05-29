@@ -60,7 +60,7 @@ This is a one-page reference for the project-specific vocabulary that the rest o
 
 ## C2 / network
 
-**C2** — Command-and-control. The mechanism for the dashboard to send commands to the device. See ADR-0001 and `DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md`.
+**C2** — Command-and-control. The mechanism for the dashboard to send commands to the device. See ADR-0001 and `DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md`.
 
 **Command secret / `command_secret`** — Per-device shared secret used for HMAC authentication of commands. Generated server-side at registration time, stored encrypted on device via `DeviceSecretStore`. See `COMMAND_SECURITY.md` and `DEVICE_REGISTRATION.md`.
 

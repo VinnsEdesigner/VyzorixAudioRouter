@@ -1,6 +1,6 @@
 # COMMAND_SECURITY.md — Remote Command Signing, Replay Protection, and Key Establishment (deep-dive of DOC_8)
 
-> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md).** DOC_8 is the canonical spec for the C2 stack; this document covers the HMAC contract, replay protection, and per-device secret flow at implementation depth. See ADR-0001 (C2 stack rationale) and ADR-0005 (WebSocket + FCM dual-channel) for the higher-level design decisions.
+> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md).** DOC_8 is the canonical spec for the C2 stack; this document covers the HMAC contract, replay protection, and per-device secret flow at implementation depth. See ADR-0001 (C2 stack rationale) and ADR-0005 (WebSocket + FCM dual-channel) for the higher-level design decisions.
 
 ## Document Purpose
 This document defines the full security contract for remote C2 commands issued from the

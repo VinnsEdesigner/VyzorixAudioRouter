@@ -39,7 +39,7 @@ The DOC_N series is the canonical architectural spec for each subsystem. Topic d
 - [`DOC_5_DIAGNOSTICS_CRASH_FORENSICS_AND_STORAGE.md`](./DOC_5_DIAGNOSTICS_CRASH_FORENSICS_AND_STORAGE.md) — observer fleet, log bundles. Deep-dive: `SOFT_REBOOT_ANALYSIS.md` (why the observer fleet exists per ADR-0002).
 - [`DOC_6_MEMORY_PERFORMANCE_AND_HARDWARE_MONITORING.md`](./DOC_6_MEMORY_PERFORMANCE_AND_HARDWARE_MONITORING.md) — health signals (Layer B in ADR-0007), thermal, memory pressure.
 - [`DOC_7_DATA_SECURITY_AND_PERSISTENCE.md`](./DOC_7_DATA_SECURITY_AND_PERSISTENCE.md) — includes `DeviceSecretStore` (§3.9) and the C2 secret storage flow (§1.1).
-- [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md) — canonical for C2 stack. Deep-dives: `COMMAND_SECURITY.md`, `DEVICE_REGISTRATION.md`, `UPDATE_MECHANISM.md`, `UPDATE_SERVER.md`, `UPDATE_SERVER_ARCHITECTURE_SPEC.md`.
+- [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md) — canonical for C2 stack. Deep-dives: `COMMAND_SECURITY.md`, `DEVICE_REGISTRATION.md`, `UPDATE_MECHANISM.md`, `UPDATE_SERVER.md`, `UPDATE_SERVER_ARCHITECTURE_SPEC.md`.
 
 ### Topic deep-dives
 
@@ -66,7 +66,7 @@ These are focused on a single subsystem or hardware quirk. They link into the DO
 
 ### Features & repo tree
 
-- [`FEATURES_UPDATED.md`](./FEATURES_UPDATED.md)
+- [`FEATURES.md`](./FEATURES.md)
 - [`VyzorixAudioRouter_RepoTree.md`](./VyzorixAudioRouter_RepoTree.md) — authoritative list of files in this repo (Android side).
 - [`VyzorixUpdate_RepoTree.md`](./VyzorixUpdate_RepoTree.md) — authoritative list of files in the server repo.
 

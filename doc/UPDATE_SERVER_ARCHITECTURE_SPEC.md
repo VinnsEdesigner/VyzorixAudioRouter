@@ -1,6 +1,6 @@
 # UPDATE_SERVER_ARCHITECTURE_SPEC.md — C2 & Update Server Architecture Specification (deep-dive of DOC_8)
 
-> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md).** DOC_8 covers the Android-side C2 stack and ties the server in. This document focuses on the **server-internal architecture** — the file-by-file Go layout. For server endpoints see `UPDATE_SERVER.md`; for device-lifecycle see `DEVICE_REGISTRATION.md`. Phase 1 uses the mock server (ADR-0009); the architecture below is the real server target for Phase 1.5.
+> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md).** DOC_8 covers the Android-side C2 stack and ties the server in. This document focuses on the **server-internal architecture** — the file-by-file Go layout. For server endpoints see `UPDATE_SERVER.md`; for device-lifecycle see `DEVICE_REGISTRATION.md`. Phase 1 uses the mock server (ADR-0009); the architecture below is the real server target for Phase 1.5.
 
 ## Document Purpose
 This documents the system and file specification for the **Vyzorix Command & Control (C2) and Update Server** (`vyzorix-update-server`). 

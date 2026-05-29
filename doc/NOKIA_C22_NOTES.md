@@ -4,7 +4,7 @@
 
 The VyzorixAudioRouter daemon targets a very specific hardware deployment: the Nokia C22 (model TA-1502, Android 13, Unisoc SC9863A SoC). Several of the daemon's design decisions only make sense in the context of this exact silicon. This document captures the C22-specific quirks so that whoever implements the affected code paths (especially the native C++ layer) does not assume they are writing for "Android in general".
 
-For broader cross-device latency considerations, see `LATENCY_TUNING.md` (forthcoming — for now, this document holds the entirety of the C22 hardware notes).
+For broader cross-device latency considerations, see `DEVICE_QUIRK_PROFILES.md` (the runtime profile schema introduced by ADR-0008). Cross-device latency tuning is not yet a separate document — this file plus `DEVICE_QUIRK_PROFILES.md` jointly cover what would normally live in a generic `LATENCY_TUNING.md`.
 
 Cross-references:
 - `SOFT_REBOOT_ANALYSIS.md` — the Nokia C22's soft-reboot failure mode that motivates this whole project.

@@ -1,6 +1,6 @@
 # UPDATE_MECHANISM.md — Cloud Update System Architecture (deep-dive of DOC_8)
 
-> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES_UPDATED.md).** DOC_8 covers the unified C2 + updates story; this document focuses on the Android-side OTA flow (UpdateChecker, UpdateDownloader, UpdateInstaller). For the server side see `UPDATE_SERVER.md` and `UPDATE_SERVER_ARCHITECTURE_SPEC.md`. Phase 1 ships against the mock server (ADR-0009); Phase 1.5 swaps to the real server.
+> **This is a deep-dive of [`DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md`](./DOC_8_REALTIME_C2_COMMUNICATION_AND_UPDATES.md).** DOC_8 covers the unified C2 + updates story; this document focuses on the Android-side OTA flow (UpdateChecker, UpdateDownloader, UpdateInstaller). For the server side see `UPDATE_SERVER.md` and `UPDATE_SERVER_ARCHITECTURE_SPEC.md`. Phase 1 ships against the mock server (ADR-0009); Phase 1.5 swaps to the real server.
 
 ## Objective
 Enable the VyzorixAudioRouter daemon to check for, download, and install APK updates from a remote Render backend server, without requiring user interaction beyond a single install confirmation (mandated by Android 13 security).

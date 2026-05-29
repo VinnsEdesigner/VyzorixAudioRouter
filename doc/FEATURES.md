@@ -1,5 +1,7 @@
 # FEATURES.md — Signaling, Telemetry, and Cryptographic Security
 
+> **Note:** This document was previously checked in as `FEATURES_UPDATED.md` and is referenced by that name in older commit history. Current canonical filename is `FEATURES.md`.
+
 ## Document Purpose
 
 This document provides a comprehensive, step-by-step technical guide for configuring,
