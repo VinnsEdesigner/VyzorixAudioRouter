@@ -13,14 +13,51 @@ import (
 // server holds the wiring between the in-memory store, the on-disk data
 // directory and the HTTP routing layer. There is no other state.
 type server struct {
-	log        *slog.Logger
-	store      *store
-	dataDir    string
-	strictHMAC bool
+	log            *slog.Logger
+	store          *store
+	dataDir        string
+	fleetToken     string
+	dashboardToken string
 }
 
-func newServer(log *slog.Logger, st *store, dataDir string, strictHMAC bool) *server {
-	return &server{log: log, store: st, dataDir: dataDir, strictHMAC: strictHMAC}
+func newServer(log *slog.Logger, st *store, dataDir, fleetToken, dashboardToken string) *server {
+	return &server{
+		log:            log,
+		store:          st,
+		dataDir:        dataDir,
+		fleetToken:     fleetToken,
+		dashboardToken: dashboardToken,
+	}
+}
+
+// requireDashboardAuth enforces the dashboard auth contract documented in
+// DEVICE_REGISTRATION.md §3.3 / §3.4 / §5. The real server uses a session
+// cookie; the mock uses a Bearer token (-dashboard-token) so end-to-end
+// CLI testing doesn't need a cookie jar. If -dashboard-token is empty the
+// endpoint is open (handy for local dev), but the README is explicit that
+// this is a mock-grade simplification.
+func (s *server) requireDashboardAuth(w http.ResponseWriter, r *http.Request) bool {
+	if s.dashboardToken == "" {
+		return true
+	}
+	auth := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if len(auth) < len(prefix) || auth[:len(prefix)] != prefix ||
+		!hmacEqualString(auth[len(prefix):], s.dashboardToken) {
+		writeError(w, http.StatusUnauthorized, "invalid_dashboard_token",
+			"dashboard endpoints require Authorization: Bearer <dashboard_token>")
+		return false
+	}
+	return true
+}
+
+// dashboardTokenPresent reports whether the request carries a Bearer header
+// (regardless of value). Used by DELETE /v1/device/{id} to pick between the
+// dashboard-token path and the HMAC path per DEVICE_REGISTRATION.md §3.4.
+func (s *server) dashboardTokenPresent(r *http.Request) bool {
+	auth := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	return len(auth) >= len(prefix) && auth[:len(prefix)] == prefix
 }
 
 func (s *server) routes() http.Handler {

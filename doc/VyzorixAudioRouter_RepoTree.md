@@ -5,7 +5,7 @@
 VyzorixAudioRouter/
 
 │
-├── README.md                                              # Project Overview, Nokia C22 Notes, Setup and Service Lifecycle
+├── README.md                                              # Project overview + doc index (entry point on GitHub)
 ├── LICENSE                                                # Repository License
 ├── .gitignore                                             # Ignore local SDK/build/cache artifacts
 ├── .editorconfig                                          # Shared formatting conventions
@@ -797,8 +797,7 @@ VyzorixAudioRouter/
 │                                                          # persisted across restarts (stale after 5min anyway)
 
 
-├── doc/                                                   # Documentation root. README.md is the entry point.
-│   ├── README.md                                          # Doc index with the Phase 1 / 1.5 / 2 / 3 phase table and links to every doc below
+├── doc/                                                   # Documentation root. The repo-root README.md links into every doc here.
 │   ├── NAMING_RENAMES.md                                  # Canonical class rename table (read first if grepping for old names)
 │   ├── GLOSSARY.md                                        # ~35 project-specific terms (route war, soft reboot, idle pause, daemon, three-layer health…)
 │   ├── SYSTEM_MAP.md                                      # Master reference — startup sequence, service interaction matrix, failure matrix, thread model, lifecycle graphs, permission matrix, three-layer health architecture

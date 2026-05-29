@@ -24,8 +24,9 @@ func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address")
 	dataDir := flag.String("data", "./cmd/mockserver/testdata", "directory containing version.json and the dummy APK")
 	logLevel := flag.String("log-level", "info", "log level: debug, info, warn, error")
-	mockSecret := flag.String("mock-secret", defaultMockSecret, "command_secret returned to every device that registers (64 hex chars)")
-	strictHMAC := flag.Bool("strict-hmac", false, "when true, reject requests whose HMAC does not validate; when false, log and accept")
+	mockSecret := flag.String("mock-secret", defaultMockSecret, "command_secret returned to every device that registers (64 hex chars). Mock-grade: real server generates a per-device secret on each registration.")
+	fleetToken := flag.String("fleet-token", defaultFleetToken, "shared fleet_registration_token enforced on POST /v1/device/register (DEVICE_REGISTRATION.md §3.1)")
+	dashboardToken := flag.String("dashboard-token", "", "Bearer token for dashboard endpoints (status / command / dashboard DELETE). Empty = no auth (mock convenience). The real server uses a session cookie.")
 	flag.Parse()
 
 	logger := newLogger(*logLevel)
@@ -42,7 +43,7 @@ func main() {
 	}
 
 	store := newStore(*mockSecret)
-	srv := newServer(logger, store, absData, *strictHMAC)
+	srv := newServer(logger, store, absData, *fleetToken, *dashboardToken)
 
 	httpSrv := &http.Server{
 		Addr:              *addr,
@@ -58,7 +59,8 @@ func main() {
 		logger.Info("mockserver listening",
 			"addr", *addr,
 			"data", absData,
-			"strict_hmac", *strictHMAC,
+			"fleet_token_set", *fleetToken != "",
+			"dashboard_token_set", *dashboardToken != "",
 		)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err

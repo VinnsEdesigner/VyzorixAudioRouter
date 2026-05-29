@@ -88,4 +88,4 @@ Considered: stop Phase 1 at Layer 7 (update system) and defer all C2 work to Pha
 - `doc/BUILD_ORDER.md` — Layer 8 description updated to reference the mock server target.
 - `doc/DEVICE_REGISTRATION.md` — contract that both real and mock implementations must satisfy.
 - `doc/CI_CD_WORKFLOWS.md` §CI Test Secret Injection — CI configuration that uses the mock.
-- `doc/README.md` — phase descriptions updated.
+- Repo-root `README.md` — phase descriptions updated.
