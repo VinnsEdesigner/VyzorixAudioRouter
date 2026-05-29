@@ -1,0 +1,81 @@
+name: Cross-Repo Server Sync
+
+# Mirrors the contents of vyzorix-update-server/ (the Go server source-of-truth
+# living in this repo) to the *root* of VinnsEdesigner/vyzorix-update-server.
+#
+# The destination repo also contains the Vyzorix dashboard (React / TanStack
+# Start) at its root. The rsync invocation below explicitly preserves the
+# dashboard's paths via --exclude so the dashboard is never clobbered.
+#
+# The doc/ folder is synced separately by sync_repo.yml — do not duplicate
+# that behaviour here.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'vyzorix-update-server/**'
+  workflow_dispatch:
+
+jobs:
+  sync-server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repo (VyzorixAudioRouter)
+        uses: actions/checkout@v4
+
+      - name: Stash server tree
+        run: |
+          mkdir -p /tmp/server-stash
+          cp -r vyzorix-update-server/. /tmp/server-stash/
+
+      - name: Checkout destination repo (vyzorix-update-server)
+        uses: actions/checkout@v4
+        with:
+          repository: 'VinnsEdesigner/vyzorix-update-server'
+          token: ${{ secrets.DESTINATION_REPO_PAT }}
+          path: dest-repo-workspace
+
+      - name: Mirror server tree onto destination root
+        # rsync flags:
+        #   -a   preserve mode/ownership/timestamps and recurse
+        #   --delete  remove files in destination that no longer exist in the source server tree
+        #   --exclude  paths owned by the destination repo (dashboard, sibling configs, doc/, .git/)
+        # The exclude list deliberately mirrors what's in vyzorix-update-server/README.md
+        # under "publication target" — keep them in sync if you change either.
+        run: |
+          rsync -av --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='src/' \
+            --exclude='package.json' \
+            --exclude='bun.lock' \
+            --exclude='bunfig.toml' \
+            --exclude='components.json' \
+            --exclude='eslint.config.js' \
+            --exclude='tsconfig.json' \
+            --exclude='vite.config.ts' \
+            --exclude='.lovable/' \
+            --exclude='.prettierrc' \
+            --exclude='.prettierignore' \
+            --exclude='doc/' \
+            --exclude='.gitignore' \
+            /tmp/server-stash/ dest-repo-workspace/
+
+      - name: Commit and push
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          cd dest-repo-workspace
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No server-tree changes detected. Skipping push."
+          else
+            short_sha=$(echo "$SOURCE_SHA" | cut -c1-7)
+            git commit -m "sync: automated server update from VyzorixAudioRouter@${short_sha}"
+            git push origin main
+          fi
