@@ -26,7 +26,7 @@ import com.vyzorix.audiorouter.services.foreground.PersistentAudioService
 import com.vyzorix.audiorouter.services.logging.DaemonLogger
 
 /** Stateless action handler. */
-public object QuickToggleAction {
+public object QuickToggleAction : NotificationActionHandler {
 
     /** Action ID carried in `NotificationActionReceiver.EXTRA_ACTION`. */
     public const val ACTION_ID: String = "quick_toggle"
@@ -57,19 +57,22 @@ public object QuickToggleAction {
     }
 
     /** Handle a routed broadcast. */
-    public fun handle(context: Context, intent: Intent) {
+    public override fun handle(context: Context, intent: Intent): Unit {
         DaemonLogger.get().info(TAG, "quick_toggle.handle")
-        val svcIntent = Intent(context, PersistentAudioService::class.java).apply {
-            action = ACTION_SERVICE_TOGGLE
-            putExtra(
-                NotificationActionReceiver.EXTRA_RATIONALE,
-                intent.getStringExtra(NotificationActionReceiver.EXTRA_RATIONALE),
-            )
-        }
-        forwardToService(context, svcIntent)
+        forwardToService(context, buildServiceIntent(context, intent))
     }
 
-    private fun forwardToService(context: Context, intent: Intent) {
+
+    /** Build the service command without starting it; used by tests and the receiver. */
+    public fun buildServiceIntent(context: Context, routedIntent: Intent): Intent {
+        val rationale = routedIntent.getStringExtra(NotificationActionReceiver.EXTRA_RATIONALE)
+        return Intent(context, PersistentAudioService::class.java).apply {
+            action = ACTION_SERVICE_TOGGLE
+            putExtra(NotificationActionReceiver.EXTRA_RATIONALE, rationale)
+        }
+    }
+
+    private fun forwardToService(context: Context, intent: Intent): Unit {
         try {
             context.startForegroundService(intent)
         } catch (t: Throwable) {
