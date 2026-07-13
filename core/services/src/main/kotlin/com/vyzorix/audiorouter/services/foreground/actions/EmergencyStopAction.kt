@@ -25,7 +25,7 @@ import com.vyzorix.audiorouter.services.foreground.PersistentAudioService
 import com.vyzorix.audiorouter.services.logging.DaemonLogger
 
 /** Stateless action handler. */
-public object EmergencyStopAction {
+public object EmergencyStopAction : NotificationActionHandler {
 
     public const val ACTION_ID: String = "emergency_stop"
 
@@ -48,20 +48,22 @@ public object EmergencyStopAction {
         )
     }
 
-    public fun handle(context: Context, intent: Intent) {
+    public override fun handle(context: Context, intent: Intent): Unit {
         DaemonLogger.get().warn(TAG, "emergency_stop.handle")
-        val svcIntent = Intent(context, PersistentAudioService::class.java).apply {
-            action = ACTION_SERVICE_EMERGENCY_STOP
-            putExtra(
-                NotificationActionReceiver.EXTRA_RATIONALE,
-                intent.getStringExtra(NotificationActionReceiver.EXTRA_RATIONALE)
-                    ?: "user_requested",
-            )
-        }
-        forwardToService(context, svcIntent)
+        forwardToService(context, buildServiceIntent(context, intent))
     }
 
-    private fun forwardToService(context: Context, intent: Intent) {
+
+    /** Build the service command without starting it; used by tests and the receiver. */
+    public fun buildServiceIntent(context: Context, routedIntent: Intent): Intent {
+        val rationale = routedIntent.getStringExtra(NotificationActionReceiver.EXTRA_RATIONALE) ?: "user_requested"
+        return Intent(context, PersistentAudioService::class.java).apply {
+            action = ACTION_SERVICE_EMERGENCY_STOP
+            putExtra(NotificationActionReceiver.EXTRA_RATIONALE, rationale)
+        }
+    }
+
+    private fun forwardToService(context: Context, intent: Intent): Unit {
         try {
             context.startForegroundService(intent)
         } catch (t: Throwable) {

@@ -57,6 +57,29 @@ public class ServiceNotificationDashboard(
     private val rebuilds: AtomicLong = AtomicLong(0L)
 
     /**
+     * Build a pure text model first, then project it into RemoteViews.
+     * Keeping this separate makes the Tier 1/2/3 dashboard logic unit-testable
+     * without depending on RemoteViews internals.
+     */
+    public fun render(tick: AggregatorTick): DashboardRenderModel {
+        val notes = tick.status.notes.take(DIAGNOSTICS_VISIBLE_LINES)
+        return DashboardRenderModel(
+            title = TITLE,
+            collapsedStatus = "${tick.status.daemonState} · route ${tick.status.routeState}",
+            riskBadge = badgeForRisk(tick.status.riskLevel),
+            routeState = tick.status.routeState.name,
+            routeDetail = "websocket: ${if (tick.status.websocketConnected) "connected" else "—"}",
+            captureState = tick.status.captureState.name,
+            captureDetail = "projection token: ${tick.signals[PROJECTION_TOKEN_ID]?.label ?: "—"}",
+            healthRisk = "Risk: ${tick.status.riskLevel}",
+            healthMemory = "memory: ${tick.status.memoryMb}MB · ${tick.signals[MEMORY_ID]?.label ?: "—"}",
+            healthThermal = "thermal: ${tick.signals[THERMAL_ID]?.label ?: "—"}",
+            healthUptime = "uptime: ${formatUptime(tick.status.uptimeMs)}",
+            diagnosticNotes = List(DIAGNOSTICS_VISIBLE_LINES) { index -> notes.getOrElse(index) { if (index == 0) "—" else "" } },
+        )
+    }
+
+    /**
      * Build the live notification for the most recent
      * [AggregatorTick]. Caller is responsible for posting it via
      * `NotificationManager.notify(NOTIFICATION_ID_DAEMON, notification)`.
@@ -64,8 +87,9 @@ public class ServiceNotificationDashboard(
     public fun build(tick: AggregatorTick): Notification {
         rebuilds.incrementAndGet()
         NotificationChannelManager.ensureChannels(context)
-        val collapsed = buildCollapsedView(tick)
-        val expanded = buildExpandedView(tick)
+        val model = render(tick)
+        val collapsed = buildCollapsedView(model)
+        val expanded = buildExpandedView(model)
         val actions = buildActions()
         val notification = NotificationCompatBridge.buildDashboardNotification(
             context = context,
@@ -88,75 +112,73 @@ public class ServiceNotificationDashboard(
     /** Diagnostic: number of times [build] was called. */
     public fun buildCount(): Long = rebuilds.get()
 
-    private fun buildCollapsedView(tick: AggregatorTick): RemoteViews {
+    private fun buildCollapsedView(model: DashboardRenderModel): RemoteViews {
         val rv = RemoteViews(packageContext.packageName, ServicesR.layout.notification_dashboard_collapsed)
-        rv.setTextViewText(ServicesR.id.notification_dashboard_collapsed_title, TITLE)
+        rv.setTextViewText(ServicesR.id.notification_dashboard_collapsed_title, model.title)
         rv.setTextViewText(
             ServicesR.id.notification_dashboard_collapsed_status,
-            "${tick.status.daemonState} · route ${tick.status.routeState}",
+            model.collapsedStatus,
         )
         rv.setTextViewText(
             ServicesR.id.notification_dashboard_collapsed_badge,
-            badgeForRisk(tick.status.riskLevel),
+            model.riskBadge,
         )
         return rv
     }
 
-    private fun buildExpandedView(tick: AggregatorTick): RemoteViews {
+    private fun buildExpandedView(model: DashboardRenderModel): RemoteViews {
         val rv = RemoteViews(packageContext.packageName, ServicesR.layout.notification_dashboard_expanded)
         // Route card
         rv.setTextViewText(
             ServicesR.id.notification_section_route_state,
-            tick.status.routeState.name,
+            model.routeState,
         )
         rv.setTextViewText(
             ServicesR.id.notification_section_route_detail,
-            "websocket: ${if (tick.status.websocketConnected) "connected" else "—"}",
+            model.routeDetail,
         )
         // Capture card
         rv.setTextViewText(
             ServicesR.id.notification_section_capture_state,
-            tick.status.captureState.name,
+            model.captureState,
         )
-        val projection = tick.signals[PROJECTION_TOKEN_ID]
         rv.setTextViewText(
             ServicesR.id.notification_section_capture_detail,
-            "projection token: ${projection?.label ?: "—"}",
+            model.captureDetail,
         )
         // Health card
         rv.setTextViewText(
             ServicesR.id.notification_section_health_risk,
-            "Risk: ${tick.status.riskLevel}",
+            model.healthRisk,
         )
         rv.setTextViewText(
             ServicesR.id.notification_section_health_memory,
-            "memory: ${tick.status.memoryMb}MB · ${tick.signals[MEMORY_ID]?.label ?: "—"}",
+            model.healthMemory,
         )
         rv.setTextViewText(
             ServicesR.id.notification_section_health_thermal,
-            "thermal: ${tick.signals[THERMAL_ID]?.label ?: "—"}",
+            model.healthThermal,
         )
         rv.setTextViewText(
             ServicesR.id.notification_section_health_uptime,
-            "uptime: ${formatUptime(tick.status.uptimeMs)}",
+            model.healthUptime,
         )
         // Diagnostics card — up to 4 most-recent notes.
-        val notes = tick.status.notes.take(DIAGNOSTICS_VISIBLE_LINES)
         rv.setTextViewText(
             ServicesR.id.notification_section_diagnostics_note_1,
-            notes.getOrElse(0) { "—" },
+            model.diagnosticNotes[0],
         )
         rv.setTextViewText(
             ServicesR.id.notification_section_diagnostics_note_2,
-            notes.getOrElse(1) { "" },
+            model.diagnosticNotes[1],
         )
         rv.setTextViewText(
             ServicesR.id.notification_section_diagnostics_note_3,
-            notes.getOrElse(2) { "" },
+            model.diagnosticNotes[2],
         )
         rv.setTextViewText(
             ServicesR.id.notification_section_diagnostics_note_4,
-            notes.getOrElse(3) { "" },
+            model.diagnosticNotes[3],
         )
         return rv
     }
@@ -206,3 +228,19 @@ public class ServiceNotificationDashboard(
         private const val TAG: String = "ServiceNotificationDashboard"
     }
 }
+
+
+public data class DashboardRenderModel(
+    public val title: String,
+    public val collapsedStatus: String,
+    public val riskBadge: String,
+    public val routeState: String,
+    public val routeDetail: String,
+    public val captureState: String,
+    public val captureDetail: String,
+    public val healthRisk: String,
+    public val healthMemory: String,
+    public val healthThermal: String,
+    public val healthUptime: String,
+    public val diagnosticNotes: List<String>,
+)

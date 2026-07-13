@@ -9,6 +9,7 @@ import com.vyzorix.audiorouter.common.enums.DaemonState
 import com.vyzorix.audiorouter.common.enums.RiskLevel
 import com.vyzorix.audiorouter.common.enums.RouteState
 import com.vyzorix.audiorouter.common.model.DaemonStatus
+import com.vyzorix.audiorouter.services.foreground.signals.SignalValue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -57,5 +58,24 @@ class ServiceNotificationDashboardTest {
         dashboard.build(mkTick())
         dashboard.build(mkTick(RiskLevel.HIGH))
         assert(dashboard.buildCount() == baseline + 2)
+    }
+
+    @Test fun `render exposes tier one two and three text without RemoteViews introspection`() {
+        val dashboard = ServiceNotificationDashboard(context = context)
+        val tick = mkTick(RiskLevel.CRITICAL).copy(
+            signals = mapOf(
+                ServiceNotificationDashboard.PROJECTION_TOKEN_ID to SignalValue.ok("granted"),
+                ServiceNotificationDashboard.MEMORY_ID to SignalValue.warn("low", "available=96MB"),
+                ServiceNotificationDashboard.THERMAL_ID to SignalValue.crit("hot", "status=4"),
+            ),
+        )
+
+        val model = dashboard.render(tick)
+
+        kotlin.test.assertEquals("Critical", model.riskBadge)
+        kotlin.test.assertEquals("SPEAKER_FORCED", model.routeState)
+        kotlin.test.assertEquals("projection token: granted", model.captureDetail)
+        kotlin.test.assertEquals("thermal: hot", model.healthThermal)
+        kotlin.test.assertEquals(listOf("note1", "note2", "", ""), model.diagnosticNotes)
     }
 }

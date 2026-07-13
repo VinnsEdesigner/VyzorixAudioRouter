@@ -5,20 +5,10 @@
 //     core/services/foreground/actions/NotificationActionReceiver.kt
 //       "Binds notification button broadcast clicks; exported=false".
 //
-// Each button on the dashboard fires this receiver with a single
-// EXTRA_ACTION value indicating which action to run. The receiver
-// dispatches into the right `*Action` handler. This pattern is
-// preferred over per-action receivers because:
-//   - One AndroidManifest receiver declaration covers all buttons.
-//   - PendingIntent request codes can be derived from the action enum.
-//   - Stateful UX (e.g. "you cannot restart while another restart is
-//     pending") can be enforced uniformly here.
-//
-// The receiver is registered with `exported=false` and only accepts
-// broadcasts that carry its private package name. Per
-// `NotificationTrampolineCompat`, the receiver will NOT start an
-// activity directly on A12+ — it issues commands to the running daemon
-// via service start intents.
+// The receiver is deliberately tiny: validate the private dashboard
+// broadcast, look up the action handler, and invoke that handler. The
+// actual command semantics live in QuickToggleAction / RestartPipelineAction /
+// EmergencyStopAction so button routing is testable without starting a service.
 
 package com.vyzorix.audiorouter.services.foreground.actions
 
@@ -29,68 +19,93 @@ import com.vyzorix.audiorouter.services.logging.DaemonLogger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Single BroadcastReceiver for every dashboard button.
- *
- * The receiver is dependency-injected at install-time via the
- * companion's `attach*` setters so it can be tested without spinning up
- * a service.
- */
+/** Single exported=false receiver for every dashboard button. */
 public class NotificationActionReceiver : BroadcastReceiver() {
 
-    override fun onReceive(context: Context?, intent: Intent?) {
+    override fun onReceive(context: Context?, intent: Intent?): Unit {
         if (context == null || intent == null) return
-        if (intent.action != ACTION_ROUTE) {
-            DaemonLogger.get().warn(
-                TAG,
-                "receiver.unexpected_action action=${intent.action}",
-            )
-            return
-        }
-        val actionId = intent.getStringExtra(EXTRA_ACTION)
-        if (actionId.isNullOrEmpty()) {
-            DaemonLogger.get().warn(TAG, "receiver.missing_action_id")
-            return
-        }
-        totalReceived.incrementAndGet()
-        lastReceivedActionId.set(actionId)
-        DaemonLogger.get().info(TAG, "receiver.route action=$actionId")
-
-        when (actionId) {
-            QuickToggleAction.ACTION_ID -> QuickToggleAction.handle(context, intent)
-            RestartPipelineAction.ACTION_ID -> RestartPipelineAction.handle(context, intent)
-            EmergencyStopAction.ACTION_ID -> EmergencyStopAction.handle(context, intent)
-            else -> {
-                unknownActions.incrementAndGet()
-                DaemonLogger.get().warn(
-                    TAG,
-                    "receiver.unknown_action_id action=$actionId",
-                )
-            }
-        }
+        dispatch(context, intent)
     }
 
     public companion object {
-        /** Broadcast action the receiver listens for. */
         public const val ACTION_ROUTE: String =
             "com.vyzorix.audiorouter.intent.action.NOTIFICATION_ACTION"
-
-        /** Extra carrying the per-action ID (`QuickToggle`, `Restart`, `Stop`). */
         public const val EXTRA_ACTION: String =
             "com.vyzorix.audiorouter.intent.extra.ACTION_ID"
-
-        /** Extra carrying a free-form rationale string for logging. */
         public const val EXTRA_RATIONALE: String =
             "com.vyzorix.audiorouter.intent.extra.RATIONALE"
 
         private val totalReceived: AtomicLong = AtomicLong(0L)
+        private val totalHandled: AtomicLong = AtomicLong(0L)
         private val unknownActions: AtomicLong = AtomicLong(0L)
+        private val rejectedBroadcasts: AtomicLong = AtomicLong(0L)
         private val lastReceivedActionId: AtomicReference<String> = AtomicReference("init")
+        private val handlers: MutableMap<String, NotificationActionHandler> = defaultHandlers().toMutableMap()
+
+        /** Pure dispatch entry point used by tests and [onReceive]. */
+        public fun dispatch(context: Context, intent: Intent): NotificationDispatchResult {
+            totalReceived.incrementAndGet()
+            if (intent.action != ACTION_ROUTE) {
+                rejectedBroadcasts.incrementAndGet()
+                DaemonLogger.get().warn(TAG, "receiver.unexpected_action action=${intent.action}")
+                return NotificationDispatchResult.Rejected("unexpected_action")
+            }
+            val actionId = intent.getStringExtra(EXTRA_ACTION)
+            if (actionId.isNullOrBlank()) {
+                rejectedBroadcasts.incrementAndGet()
+                DaemonLogger.get().warn(TAG, "receiver.missing_action_id")
+                return NotificationDispatchResult.Rejected("missing_action")
+            }
+            lastReceivedActionId.set(actionId)
+            val handler = synchronized(handlers) { handlers[actionId] }
+            if (handler == null) {
+                unknownActions.incrementAndGet()
+                DaemonLogger.get().warn(TAG, "receiver.unknown_action_id action=$actionId")
+                return NotificationDispatchResult.Unknown(actionId)
+            }
+            handler.handle(context, intent)
+            totalHandled.incrementAndGet()
+            return NotificationDispatchResult.Handled(actionId)
+        }
+
+        /** Test hook: replace one handler without altering manifest wiring. */
+        public fun attachHandler(actionId: String, handler: NotificationActionHandler): Unit = synchronized(handlers) {
+            handlers[actionId] = handler
+        }
+
+        /** Test hook: restore production handlers and reset counters. */
+        public fun resetForTests(): Unit = synchronized(handlers) {
+            handlers.clear()
+            handlers.putAll(defaultHandlers())
+            totalReceived.set(0L)
+            totalHandled.set(0L)
+            unknownActions.set(0L)
+            rejectedBroadcasts.set(0L)
+            lastReceivedActionId.set("init")
+        }
 
         public fun totalReceivedCount(): Long = totalReceived.get()
+        public fun totalHandledCount(): Long = totalHandled.get()
         public fun unknownActionCount(): Long = unknownActions.get()
+        public fun rejectedBroadcastCount(): Long = rejectedBroadcasts.get()
         public fun lastReceivedAction(): String = lastReceivedActionId.get()
+
+        private fun defaultHandlers(): Map<String, NotificationActionHandler> = mapOf(
+            QuickToggleAction.ACTION_ID to QuickToggleAction,
+            RestartPipelineAction.ACTION_ID to RestartPipelineAction,
+            EmergencyStopAction.ACTION_ID to EmergencyStopAction,
+        )
 
         private const val TAG: String = "NotificationActionReceiver"
     }
+}
+
+public fun interface NotificationActionHandler {
+    public fun handle(context: Context, intent: Intent): Unit
+}
+
+public sealed class NotificationDispatchResult(public val handled: Boolean) {
+    public data class Handled(public val actionId: String) : NotificationDispatchResult(true)
+    public data class Unknown(public val actionId: String) : NotificationDispatchResult(false)
+    public data class Rejected(public val reason: String) : NotificationDispatchResult(false)
 }
