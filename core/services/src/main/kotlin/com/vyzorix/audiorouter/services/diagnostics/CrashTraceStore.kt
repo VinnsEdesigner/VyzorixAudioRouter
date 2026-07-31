@@ -11,8 +11,10 @@ public class CrashTraceStore(private val maxEntries: Int = DEFAULT_MAX_ENTRIES) 
         while (traces.size > maxEntries) traces.removeFirst()
     }
 
-    public fun recent(limit: Int = maxEntries): List<CrashTrace> = synchronized(traces) {
-        traces.takeLast(limit.coerceAtLeast(0))
+    public fun recent(limit: Int = maxEntries): List<CrashTrace> {
+        return synchronized(traces) {
+            traces.toList().takeLast(limit.coerceAtLeast(0))
+        }
     }
 
     public fun countSince(epochMs: Long): Int = synchronized(traces) {

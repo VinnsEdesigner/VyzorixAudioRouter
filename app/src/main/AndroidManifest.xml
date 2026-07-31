@@ -58,8 +58,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:fullBackupContent="false"
-        tools:targetApi="33">
+        android:fullBackupContent="false">
 
         <!--
           BootstrapActivity — the single launcher entrypoint. Once

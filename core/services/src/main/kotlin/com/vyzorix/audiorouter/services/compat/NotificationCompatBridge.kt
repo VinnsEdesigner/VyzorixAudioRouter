@@ -78,9 +78,8 @@ public object NotificationCompatBridge {
         if (contentTitle != null) builder.setContentTitle(contentTitle)
         if (contentText != null) builder.setContentText(contentText)
         if (contentIntent != null) builder.setContentIntent(contentIntent)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.foregroundServiceBehavior = NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
-        }
+        // Always set foreground service behavior since minSdk is 33 (S=31).
+        builder.foregroundServiceBehavior = NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
         for (action in actions) {
             builder.addAction(action)
         }
@@ -103,11 +102,7 @@ public object NotificationCompatBridge {
 
     /**
      * True iff the platform supports `NotificationCompat.Builder.setStyle`
-     * with `DecoratedCustomViewStyle` natively. AndroidX falls back to a
-     * synthetic style on pre-N versions, which the daemon does NOT
-     * support (minSdk = 33 anyway, but the check is left for static
-     * analysis).
+     * with `DecoratedCustomViewStyle` natively. Always true since minSdk is 33 (N=24).
      */
-    public fun decoratedCustomViewSupported(): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+    public fun decoratedCustomViewSupported(): Boolean = true
 }

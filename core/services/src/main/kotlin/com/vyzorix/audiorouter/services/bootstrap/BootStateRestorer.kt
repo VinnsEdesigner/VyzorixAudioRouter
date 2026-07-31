@@ -21,7 +21,6 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.accessibility.AccessibilityManager
@@ -51,11 +50,8 @@ public object BootStateRestorer {
         val launchIntent = Intent(context, PersistentAudioService::class.java).apply {
             action = ACTION_RESTORE_FROM_BOOT
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(launchIntent)
-        } else {
-            context.startService(launchIntent)
-        }
+        // Always use startForegroundService since minSdk is 33 (O=26).
+        context.startForegroundService(launchIntent)
     }
 
     /**

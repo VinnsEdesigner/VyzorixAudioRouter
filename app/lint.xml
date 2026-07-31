@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+      Suppress the ObsoleteSdkInt warning for mipmap-anydpi-v26.
+      While minSdk is 33, the v26 qualifier correctly indicates when
+      adaptive-icon resources become relevant. The lint rule doesn't
+      account for the fact that adaptive-icon is only defined for v26+,
+      and the resource directory qualifier describes when the resource
+      becomes relevant, not the app's minimum SDK.
+    -->
+    <issue id="ObsoleteSdkInt" severity="ignore" />
+</lint>

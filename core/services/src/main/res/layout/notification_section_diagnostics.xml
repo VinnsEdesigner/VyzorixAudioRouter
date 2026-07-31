@@ -5,6 +5,7 @@
   notes are dropped client-side by ServiceNotificationDashboard.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
@@ -14,7 +15,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
-        android:text="Diagnostics" />
+        android:text="@string/notification_section_diagnostics_label" />
 
     <TextView
         android:id="@+id/notification_section_diagnostics_note_1"
@@ -22,7 +23,7 @@
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
         android:singleLine="true"
-        android:text="" />
+        tools:text="" />
 
     <TextView
         android:id="@+id/notification_section_diagnostics_note_2"
@@ -30,7 +31,7 @@
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
         android:singleLine="true"
-        android:text="" />
+        tools:text="" />
 
     <TextView
         android:id="@+id/notification_section_diagnostics_note_3"
@@ -38,7 +39,7 @@
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
         android:singleLine="true"
-        android:text="" />
+        tools:text="" />
 
     <TextView
         android:id="@+id/notification_section_diagnostics_note_4"
@@ -46,6 +47,6 @@
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
         android:singleLine="true"
-        android:text="" />
+        tools:text="" />
 
 </LinearLayout>

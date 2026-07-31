@@ -21,7 +21,6 @@
 package com.vyzorix.audiorouter.services.foreground.signals
 
 import android.content.Context
-import android.os.Build
 import android.os.PowerManager
 import com.vyzorix.audiorouter.services.logging.DaemonLogger
 
@@ -42,13 +41,7 @@ public class ThermalSignal(
     public override val id: String = "thermal"
 
     public override fun current(): SignalValue {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            return SignalValue.unknown(
-                label = "thermal api unavailable",
-                details = "requires API 29+",
-                readEpochMs = clock(),
-            )
-        }
+        // Always read thermal status since minSdk is 33 (Q=29).
         val status = try {
             powerManager.currentThermalStatus
         } catch (t: Throwable) {

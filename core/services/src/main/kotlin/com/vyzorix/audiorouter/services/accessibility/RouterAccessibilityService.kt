@@ -22,7 +22,6 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.vyzorix.audiorouter.services.bootstrap.LauncherIconHider
@@ -82,11 +81,8 @@ public class RouterAccessibilityService : AccessibilityService() {
          */
         public fun startDaemon(context: Context) {
             val launchIntent = Intent(context, PersistentAudioService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(launchIntent)
-            } else {
-                context.startService(launchIntent)
-            }
+            // Always use startForegroundService since minSdk is 33 (O=26).
+            context.startForegroundService(launchIntent)
         }
     }
 }

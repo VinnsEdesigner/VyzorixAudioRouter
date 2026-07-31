@@ -68,11 +68,8 @@ public class LogBundleExporter(
         if (!logDirectory.exists()) return Result.Empty
         val filename = "vyzorix-logs-${nowMillis()}.zip"
         return runCatching {
-            val saved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                exportViaMediaStore(logDirectory, filename)
-            } else {
-                exportToLegacyExternal(logDirectory, filename)
-            }
+            // Always use MediaStore since minSdk is 33 (Q=29).
+            val saved = exportViaMediaStore(logDirectory, filename)
             saved ?: Result.Empty
         }.getOrElse { Result.Failure(it) }
     }
@@ -84,9 +81,8 @@ public class LogBundleExporter(
             put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
             put(MediaStore.MediaColumns.MIME_TYPE, MIME_ZIP)
             put(MediaStore.MediaColumns.RELATIVE_PATH, RELATIVE_PATH)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
+            // Always set IS_PENDING since minSdk is 33 (Q=29).
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val uri = resolver.insert(collection, values)
             ?: throw IOException("MediaStore.insert returned null")
@@ -98,12 +94,11 @@ public class LogBundleExporter(
             resolver.delete(uri, null, null)
             return null
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val finalize = ContentValues().apply {
-                put(MediaStore.MediaColumns.IS_PENDING, 0)
-            }
-            resolver.update(uri, finalize, null, null)
+        // Always finalize with IS_PENDING=0 since minSdk is 33 (Q=29).
+        val finalize = ContentValues().apply {
+            put(MediaStore.MediaColumns.IS_PENDING, 0)
         }
+        resolver.update(uri, finalize, null, null)
         return Result.Saved(
             uri = uri,
             displayPath = "Documents/Vyzorix/$filename",
@@ -112,6 +107,8 @@ public class LogBundleExporter(
     }
 
     private fun exportToLegacyExternal(logDirectory: File, filename: String): Result.Saved? {
+        // This method is no longer used since minSdk is 33 (Q=29).
+        // Kept for binary compatibility; it will never be called.
         val externalDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
             ?: throw IOException("getExternalFilesDir returned null")
         if (!externalDir.exists() && !externalDir.mkdirs()) {

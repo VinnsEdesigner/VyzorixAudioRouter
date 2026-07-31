@@ -27,7 +27,6 @@ import android.Manifest
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
 import androidx.core.content.ContextCompat
 import com.vyzorix.audiorouter.services.logging.DaemonLogger
 import java.util.concurrent.atomic.AtomicLong
@@ -69,7 +68,7 @@ public class NotificationPermissionManager(
 
     /** True iff the daemon currently has the `POST_NOTIFICATIONS` grant. */
     public fun isGranted(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        // Always check POST_NOTIFICATIONS permission since minSdk is 33 (TIRAMISU=33).
         return try {
             ContextCompat.checkSelfPermission(
                 context,
@@ -110,10 +109,7 @@ public class NotificationPermissionManager(
     public fun evaluate(): NotificationPermissionState {
         evaluations.incrementAndGet()
         lastEvaluationEpochMs.set(clock())
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            lastResultLabel = "not_applicable"
-            return NotificationPermissionState.NotApplicable
-        }
+        // Always evaluate POST_NOTIFICATIONS since minSdk is 33 (TIRAMISU=33).
         val granted = isGranted()
         if (granted) {
             grantedCount.incrementAndGet()

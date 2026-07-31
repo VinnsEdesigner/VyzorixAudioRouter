@@ -164,15 +164,11 @@ public class ProjectionActivityMediator(
             ProjectionPermissionContract.EXTRA_RESULT_CODE,
             Activity.RESULT_CANCELED,
         )
-        val resultData: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(
-                ProjectionPermissionContract.EXTRA_RESULT_DATA,
-                Intent::class.java,
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(ProjectionPermissionContract.EXTRA_RESULT_DATA)
-        }
+        // Always use typed getParcelableExtra since minSdk is 33 (TIRAMISU=33).
+        val resultData: Intent? = intent.getParcelableExtra(
+            ProjectionPermissionContract.EXTRA_RESULT_DATA,
+            Intent::class.java,
+        )
         return if (resultCode == Activity.RESULT_OK && resultData != null) {
             grants.incrementAndGet()
             lastResultLabel.set("granted")

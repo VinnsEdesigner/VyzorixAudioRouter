@@ -16,8 +16,6 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.os.Build
-import androidx.annotation.RequiresApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -51,7 +49,7 @@ public class AudioFocusHandler(
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
 
-    /** Currently-held [AudioFocusRequest] (A8.0+) — `null` if focus released. */
+    /** Currently-held [AudioFocusRequest] — `null` if focus released. */
     private var activeRequest: AudioFocusRequest? = null
 
     /**
@@ -75,16 +73,8 @@ public class AudioFocusHandler(
             trySend(event)
         }
 
-        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            requestFocusOreoPlus(listener)
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(
-                listener,
-                AudioManager.STREAM_VOICE_CALL,
-                AudioManager.AUDIOFOCUS_GAIN,
-            )
-        }
+        // Always use AudioFocusRequest since minSdk is 33 (O=26).
+        val result = requestFocus(listener)
 
         trySend(
             when (result) {
@@ -99,8 +89,7 @@ public class AudioFocusHandler(
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun requestFocusOreoPlus(listener: AudioManager.OnAudioFocusChangeListener): Int {
+    private fun requestFocus(listener: AudioManager.OnAudioFocusChangeListener): Int {
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(attributes)
             .setAcceptsDelayedFocusGain(false)
@@ -111,12 +100,7 @@ public class AudioFocusHandler(
     }
 
     private fun releaseFocus(listener: AudioManager.OnAudioFocusChangeListener) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            activeRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-            activeRequest = null
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(listener)
-        }
+        activeRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        activeRequest = null
     }
 }

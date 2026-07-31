@@ -32,6 +32,7 @@
 package com.vyzorix.audiorouter.services.compat
 
 import android.os.Build
+import androidx.annotation.ChecksSdkIntAtLeast
 
 /** Stateless compat policy. */
 public object NotificationTrampolineCompat {
@@ -40,22 +41,25 @@ public object NotificationTrampolineCompat {
      * True iff a notification-action BroadcastReceiver may start a
      * foreground activity directly via `startActivity`. False on
      * Android 12+.
+     *
+     * Always false since minSdk is 33 (S=31).
      */
-    public fun canTrampolineFromBroadcast(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+    public fun canTrampolineFromBroadcast(): Boolean = false
 
     /**
      * True iff the OS supports fullScreenIntent fallback. fullScreenIntent
      * has been available since A10 (API 29).
+     *
+     * Always true since minSdk is 33 (Q=29).
      */
-    public fun fullScreenIntentSupported(): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+    public fun fullScreenIntentSupported(): Boolean = true
 
     /**
      * True iff the platform requires the
      * `USE_FULL_SCREEN_INTENT` runtime permission for fullScreenIntent
      * notifications. Introduced in A14 (API 34, U).
      */
+    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public fun fullScreenIntentRequiresPermission(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
 }

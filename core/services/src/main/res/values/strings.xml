@@ -14,4 +14,26 @@
     <string name="daemon_notification_title">VyzorixAudioRouter</string>
     <string name="daemon_notification_text_running">Speaker route active</string>
     <string name="daemon_notification_text_starting">Starting audio route…</string>
+
+    <!-- Notification section labels -->
+    <string name="notification_section_health_label">Health</string>
+    <string name="notification_section_health_risk_default">Risk: STABLE</string>
+    <string name="notification_section_health_memory_default">memory: —</string>
+    <string name="notification_section_health_thermal_default">thermal: —</string>
+    <string name="notification_section_health_uptime_default">uptime: —</string>
+
+    <string name="notification_section_capture_label">Capture</string>
+    <string name="notification_section_capture_route_default">route: —</string>
+    <string name="notification_section_capture_anchor_default">anchor: —</string>
+
+    <string name="notification_section_route_label">Route</string>
+    <string name="notification_section_route_state_default">state: —</string>
+
+    <string name="notification_section_diagnostics_label">Diagnostics</string>
+
+    <string name="notification_section_capture_state_idle">IDLE</string>
+    <string name="notification_section_capture_projection_default">projection token: —</string>
+
+    <string name="notification_section_route_state_unknown">UNKNOWN</string>
+    <string name="notification_section_route_detail_default">—</string>
 </resources>

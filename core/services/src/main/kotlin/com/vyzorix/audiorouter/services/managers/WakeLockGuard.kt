@@ -48,10 +48,10 @@ public class WakeLockGuard(
     public fun acquire(): Boolean {
         val l = lock ?: return false
         if (!l.isHeld) {
-            // No timeout — the daemon owns its own lifecycle and releases on
-            // disengage(). The OS does NOT enforce a maximum hold time on
-            // foreground-service-backed wake locks, so this is safe.
-            l.acquire()
+            // Timeout of 10 minutes — safety net in case release() is missed.
+            // The daemon normally releases on disengage(), but the timeout
+            // ensures the OS can clean up if that never happens.
+            l.acquire(WAKELOCK_TIMEOUT_MS)
         }
         return l.isHeld
     }
@@ -72,5 +72,7 @@ public class WakeLockGuard(
 
     public companion object {
         public const val DEFAULT_TAG: String = "Vyzorix:SpeakerForce"
+        /** 10-minute timeout for the wake lock — safety net, not the primary release mechanism. */
+        private const val WAKELOCK_TIMEOUT_MS: Long = 10 * 60 * 1000
     }
 }

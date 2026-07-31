@@ -59,18 +59,12 @@ public object IntentUtils {
 
     /**
      * Returns `PendingIntent.FLAG_IMMUTABLE` or `FLAG_MUTABLE` depending on
-     * [mutable] and the host SDK level. Both flags are 0 below S; A12
-     * is the minimum target for the daemon so this never returns 0.
+     * [mutable]. Both flags are guaranteed present since minSdk is 33 (S=31).
      */
     public fun mutabilityFlag(mutable: Boolean): Int {
-        // Both FLAG_IMMUTABLE (introduced API 23) and FLAG_MUTABLE (introduced
-        // API 31) are guaranteed present on Android 13 / minSdk=33.
         return if (mutable) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PendingIntent.FLAG_MUTABLE
-            } else {
-                0
-            }
+            // Always set FLAG_MUTABLE since minSdk is 33 (S=31).
+            PendingIntent.FLAG_MUTABLE
         } else {
             PendingIntent.FLAG_IMMUTABLE
         }

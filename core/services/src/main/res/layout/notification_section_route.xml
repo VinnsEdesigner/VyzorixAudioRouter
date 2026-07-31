@@ -10,20 +10,20 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
-        android:text="Route" />
+        android:text="@string/notification_section_route_label" />
 
     <TextView
         android:id="@+id/notification_section_route_state"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification"
-        android:text="UNKNOWN" />
+        android:text="@string/notification_section_route_state_unknown" />
 
     <TextView
         android:id="@+id/notification_section_route_detail"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
-        android:text="—" />
+        android:text="@string/notification_section_route_detail_default" />
 
 </LinearLayout>

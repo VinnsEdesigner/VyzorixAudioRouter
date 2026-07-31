@@ -13,6 +13,7 @@
 
 package com.vyzorix.audiorouter.services.foreground
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.ComponentName
@@ -68,6 +69,7 @@ public object ServiceNotification {
      * [LogExportReceiver]. Without ADB this is the user's only way to retrieve
      * diagnostics from a soak test.
      */
+    @SuppressLint("BuilderSetStyle")
     public fun buildExportLogsAction(context: Context): Notification.Action {
         val intent = Intent(LogExportReceiver.ACTION_EXPORT_LOGS).apply {
             // Explicit component target so the broadcast lands even when the

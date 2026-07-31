@@ -10,20 +10,20 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
-        android:text="Capture" />
+        android:text="@string/notification_section_capture_label" />
 
     <TextView
         android:id="@+id/notification_section_capture_state"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification"
-        android:text="IDLE" />
+        android:text="@string/notification_section_capture_state_idle" />
 
     <TextView
         android:id="@+id/notification_section_capture_detail"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
-        android:text="projection token: —" />
+        android:text="@string/notification_section_capture_projection_default" />
 
 </LinearLayout>

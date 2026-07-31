@@ -453,12 +453,8 @@ public class PersistentAudioService : Service() {
         val filter = IntentFilter(
             ProjectionPermissionContract.ACTION_PROJECTION_RESULT,
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(projectionResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            registerReceiver(projectionResultReceiver, filter)
-        }
+        // Always use RECEIVER_NOT_EXPORTED since minSdk is 33 (TIRAMISU=33).
+        registerReceiver(projectionResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
     }
 
     /** Receives the projection grant from [ProjectionPermissionActivity]. */
@@ -470,17 +466,11 @@ public class PersistentAudioService : Service() {
                 ProjectionPermissionContract.EXTRA_RESULT_CODE,
                 Activity.RESULT_CANCELED,
             )
-            val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra(
-                    ProjectionPermissionContract.EXTRA_RESULT_DATA,
-                    Intent::class.java,
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra<Intent>(
-                    ProjectionPermissionContract.EXTRA_RESULT_DATA,
-                )
-            }
+            // Always use typed getParcelableExtra since minSdk is 33 (TIRAMISU=33).
+            val data = intent.getParcelableExtra(
+                ProjectionPermissionContract.EXTRA_RESULT_DATA,
+                Intent::class.java,
+            )
             val triggerOrigin = intent.getStringExtra(
                 ProjectionPermissionContract.EXTRA_TRIGGER_ORIGIN,
             ) ?: ProjectionPermissionContract.ORIGIN_UNKNOWN

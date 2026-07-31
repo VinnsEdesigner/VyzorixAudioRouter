@@ -14,8 +14,6 @@
 package com.vyzorix.audiorouter.services.voip
 
 import android.media.AudioDeviceInfo
-import android.os.Build
-import androidx.annotation.RequiresApi
 import com.vyzorix.audiorouter.services.managers.AudioRouteManager
 
 /** API-31+ wrapper around setCommunicationDevice. Falls back gracefully. */
@@ -25,12 +23,9 @@ public open class CommunicationDeviceSelector(
 
     /**
      * Returns `true` iff the system reports the BUILTIN_SPEAKER as the
-     * current communication device. On API < 31 the call is short-circuited
-     * to `true` because the relevant API doesn't exist; the engine relies
-     * on `isSpeakerphoneOn` in that case.
+     * current communication device. Always uses the S+ API since minSdk is 33 (S=31).
      */
     public open fun isBuiltinSpeakerActive(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
         return isBuiltinSpeakerActiveSPlus()
     }
 
@@ -41,17 +36,16 @@ public open class CommunicationDeviceSelector(
      * the request.
      */
     public open fun assertBuiltinSpeaker(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         return assertBuiltinSpeakerSPlus()
     }
 
-    @RequiresApi(Build.VERSION_CODES.S)
+    // minSdk is 33 (S=31), so S+ APIs are always available.
     private fun isBuiltinSpeakerActiveSPlus(): Boolean {
         val current = routeManager.rawAudioManager.communicationDevice ?: return false
         return current.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
     }
 
-    @RequiresApi(Build.VERSION_CODES.S)
+    // minSdk is 33 (S=31), so S+ APIs are always available.
     private fun assertBuiltinSpeakerSPlus(): Boolean {
         val am = routeManager.rawAudioManager
         // Already correct — leave it.

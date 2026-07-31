@@ -10,34 +10,34 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
-        android:text="Health" />
+        android:text="@string/notification_section_health_label" />
 
     <TextView
         android:id="@+id/notification_section_health_risk"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification"
-        android:text="Risk: STABLE" />
+        android:text="@string/notification_section_health_risk_default" />
 
     <TextView
         android:id="@+id/notification_section_health_memory"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
-        android:text="memory: —" />
+        android:text="@string/notification_section_health_memory_default" />
 
     <TextView
         android:id="@+id/notification_section_health_thermal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
-        android:text="thermal: —" />
+        android:text="@string/notification_section_health_thermal_default" />
 
     <TextView
         android:id="@+id/notification_section_health_uptime"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@android:style/TextAppearance.Material.Notification.Info"
-        android:text="uptime: —" />
+        android:text="@string/notification_section_health_uptime_default" />
 
 </LinearLayout>

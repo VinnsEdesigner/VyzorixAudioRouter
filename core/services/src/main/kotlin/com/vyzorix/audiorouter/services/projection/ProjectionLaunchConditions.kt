@@ -30,7 +30,6 @@ import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import com.vyzorix.audiorouter.common.constants.NotificationConstants
@@ -133,11 +132,7 @@ public class ProjectionLaunchConditions(
     }
 
     private fun postNotificationsGranted(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            // POST_NOTIFICATIONS was introduced in A13. Pre-A13 the
-            // implicit grant is always present.
-            return true
-        }
+        // Always check POST_NOTIFICATIONS permission since minSdk is 33 (TIRAMISU=33).
         return ContextCompat.checkSelfPermission(
             context,
             "android.permission.POST_NOTIFICATIONS",

@@ -56,16 +56,10 @@ public object PendingIntentCompatPolicy {
         if (updateCurrent) PendingIntent.FLAG_UPDATE_CURRENT else 0
 
     private fun immutableFlag(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.FLAG_IMMUTABLE
-        } else {
-            0
-        }
+        // Always set FLAG_IMMUTABLE since minSdk is 33 (M=23).
+        PendingIntent.FLAG_IMMUTABLE
 
     private fun mutableFlag(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PendingIntent.FLAG_MUTABLE
-        } else {
-            0
-        }
+        // Always set FLAG_MUTABLE since minSdk is 33 (S=31).
+        PendingIntent.FLAG_MUTABLE
 }
